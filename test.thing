@@ -11,7 +11,7 @@ Notes:
 "PI is the following number:"
 const PI 3.141592654
 
-"Test equality. Assumes a and b are either both ints or both floats."
+"Test let variable. Assumes a and b are either both ints or both floats."
 fn test(a, b) {
     let a (+ a b)
     a
