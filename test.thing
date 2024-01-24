@@ -1,0 +1,70 @@
+"
+Notes:
+- This language uses a Lisp-like syntax, but is not a Lisp. This explains why
+    the syntax uses prefix notation.
+- This language has first-class functions.
+- This language does not have proper if statements or while loops. Instead, it
+    has native functions that implement these features. This is explains why the
+    you have to wrap the body of an if statement or while loop in a function.
+"
+
+"PI is the following number:"
+const PI 3.141592654
+
+"Test equality. Assumes a and b are either both ints or both floats."
+fn test(a, b) {
+    let a (+ a b)
+    a
+}
+
+"Fibonacci function."
+fn fib(n) {
+    (if (== n 0)
+        0
+        (fn {
+            (if (== n 1)
+                1
+                (fn {
+                    (+ (fib (- n 1)) (fib (- n 2)))
+                })
+            )
+        })
+    )
+}
+
+"Fibonacci function, using a loop."
+fn fib_loop(n) {
+    let a 0
+    let b 1
+    let i 0
+    (while (fn {(!= i n)})
+        (fn {
+            let c (+ a b)
+            set a b
+            set b c
+            set i (+ i 1)
+        })
+    )
+    a
+}
+
+"The main function."
+main {
+    (print (test 2 3))
+    (print (test (float (test 2 3)) PI))
+    (print (fib 5))
+    (print (fib 6))
+    (print (fib 7))
+    (print (fib_loop 8))
+}
+
+"
+Expected output:
+5
+8.141592654
+5
+8
+13
+21
+result: Void
+"
