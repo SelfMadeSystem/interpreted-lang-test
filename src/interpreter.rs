@@ -40,7 +40,7 @@ pub enum InterpreterValue {
     Float(f64),
     String(String),
     Bool(bool),
-    Array(Vec<InterpreterValue>),
+    Array(Vec<Rc<InterpreterValue>>),
     Void,
     Function {
         name: String,
@@ -67,6 +67,13 @@ impl InterpreterValue {
         }
     }
 
+    pub fn to_formatted_string(&self) -> String {
+        match self {
+            Self::String(s) => format!("\"{}\"", s),
+            _ => self.to_string(),
+        }
+    }
+
     pub fn to_string(&self) -> String {
         match self {
             Self::Int(i) => i.to_string(),
@@ -76,7 +83,7 @@ impl InterpreterValue {
             Self::Array(a) => format!(
                 "[{}]",
                 a.iter()
-                    .map(|v| v.to_string())
+                    .map(|v| v.to_formatted_string())
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
@@ -97,8 +104,28 @@ impl TryFrom<AstNode> for InterpreterValue {
             AstNodeType::Int(value) => Ok(Self::Int(value)),
             AstNodeType::Float(value) => Ok(Self::Float(value)),
             AstNodeType::String(value) => Ok(Self::String(value)),
-            AstNodeType::Array(value) => todo!(),
-            AstNodeType::Fn { name, params, body } => todo!(),
+            AstNodeType::Array(value) => {
+                let mut array = Vec::new();
+                for value in value.iter() {
+                    array.push(Rc::new((value.clone()).try_into()?));
+                }
+                Ok(Self::Array(array))
+            }
+            AstNodeType::Fn { name, params, body } => Ok(Self::Function {
+                name,
+                params: params
+                    .clone()
+                    .into_iter()
+                    .map(|p| match p {
+                        AstNode {
+                            ty: AstNodeType::Ident(i),
+                            ..
+                        } => i,
+                        _ => unreachable!(),
+                    })
+                    .collect(),
+                body,
+            }),
             AstNodeType::Keyword(Keyword::True) => Ok(Self::Bool(true)),
             AstNodeType::Keyword(Keyword::False) => Ok(Self::Bool(false)),
             _ => Err(
@@ -254,7 +281,13 @@ impl InterpreterScope {
             AstNodeType::Float(value) => Ok(Rc::new(InterpreterValue::Float(*value))),
             AstNodeType::String(value) => Ok(Rc::new(InterpreterValue::String(value.clone()))),
             AstNodeType::Bool(b) => Ok(Rc::new(InterpreterValue::Bool(*b))),
-            AstNodeType::Array(value) => todo!(),
+            AstNodeType::Array(value) => {
+                let mut array = Vec::new();
+                for value in value.iter() {
+                    array.push(self.evaluate(value)?);
+                }
+                Ok(Rc::new(InterpreterValue::Array(array)))
+            }
             AstNodeType::Fn { name, params, body } => {
                 let function = Rc::new(InterpreterValue::Function {
                     name: name.clone(),

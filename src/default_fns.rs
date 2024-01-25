@@ -259,5 +259,62 @@ pub fn default_native_functions() -> HashMap<String, NativeFn> {
         ),
     );
 
+    functions.insert("get".to_string(), |scope, params| {
+        if params.len() < 2 {
+            return Err(InterpreterError::InvalidFunctionCall("get".to_owned()).into());
+        }
+        let params = scope.evaluate_each(params)?;
+        let mut iter = params.into_iter();
+        let mut accum = iter.next().unwrap();
+        let mut i = 0;
+
+        for param in iter {
+            i += 1;
+            match accum.as_ref() {
+                InterpreterValue::Array(a) => match param.as_ref() {
+                    InterpreterValue::Int(i) => {
+                        accum = a[*i as usize].clone();
+                    }
+                    _ => {
+                        return Err(InterpreterError::InvalidTypeArgNative(
+                            param.get_type().to_string(),
+                            i,
+                            "get".to_owned(),
+                            "int".to_owned(),
+                        )
+                        .into());
+                    }
+                },
+                InterpreterValue::String(s) => match param.as_ref() {
+                    InterpreterValue::Int(i) => {
+                        accum = Rc::new(InterpreterValue::String(
+                            s.chars().nth(*i as usize).unwrap().to_string(),
+                        ));
+                    }
+                    _ => {
+                        return Err(InterpreterError::InvalidTypeArgNative(
+                            param.get_type().to_string(),
+                            i,
+                            "get".to_owned(),
+                            "int".to_owned(),
+                        )
+                        .into());
+                    }
+                },
+                _ => {
+                    return Err(InterpreterError::InvalidTypeArgNative(
+                        accum.get_type().to_string(),
+                        i,
+                        "get".to_owned(),
+                        "array".to_owned(),
+                    )
+                    .into());
+                }
+            }
+        }
+
+        Ok(accum)
+    });
+
     functions
 }

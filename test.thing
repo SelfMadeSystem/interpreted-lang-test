@@ -1,26 +1,9 @@
+const a fn(%a_-=+-rs!@#$%^&*+123\/.aARS") {
+    (+ "hi" (string %a_-=+-rs!@#$%^&*+123\/.aARS"))
+}
+
 main {
-    (print "Float conversion: ")
-    (print (float 1)) "Expected: 1"
-    (print (float 1.0)) "Expected: 1"
-    (print (float "1.0")) "Expected: 1"
-    (print (float true)) "Expected: 1"
-
-    (print "Int conversion: ")
-    (print (int 1)) "Expected: 1"
-    (print (int 1.0)) "Expected: 1"
-    (print (int "1")) "Expected: 1"
-    (print (int true)) "Expected: 1"
-
-    (print "String conversion: ")
-    (print (string 1)) "Expected: 1"
-    (print (string 1.0)) "Expected: 1"
-    (print (string "hi")) "Expected: hi"
-    (print (string true)) "Expected: true"
-
-    (print "Bool conversion: ")
-    (print (bool 1)) "Expected: true"
-    (print (bool 1.0)) "Expected: true"
-    (print (bool "hi")) "Expected: false"
-    (print (bool "true")) "Expected: true"
-    (print (bool true)) "Expected: true"
+    let arr [3, 2 1 (a 1), ["dis fr fr crazy"] "commas are optional"]
+    (print arr)
+    (print (get arr 4 0 4))
 }
