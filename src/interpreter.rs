@@ -26,12 +26,13 @@ pub enum InterpreterError {
     InvalidFunctionCall(String),
     #[error("Invalid types {0} for {1}")]
     InvalidType1Native(String, String),
-    #[error("Invalid types {0} {1} for {2}")]
+    #[error("Invalid types {0} and {1} for {2}")]
     InvalidType2Native(String, String, String),
+    #[error("Invalid type {0} at argument {1} for {2}. Expected type: {3}")]
+    InvalidTypeArgNative(String, usize, String, String),
 }
 
-pub type NativeFn =
-    fn(&mut InterpreterScope, Vec<Rc<InterpreterValue>>) -> Result<Rc<InterpreterValue>>;
+pub type NativeFn = fn(&mut InterpreterScope, &Vec<AstNode>) -> Result<Rc<InterpreterValue>>;
 
 #[derive(Debug, Clone)]
 pub enum InterpreterValue {
@@ -81,7 +82,7 @@ impl InterpreterValue {
             ),
             Self::Void => "Void".to_string(),
             Self::Function { name, params, .. } => {
-                format!("Function {{ name: {}, params: {:?}, }}", name, params)
+                format!("Function {{ name: {}, params: {:?} }}", name, params)
             }
             Self::NativeFunction { name, .. } => format!("NativeFunction {{ name: {} }}", name),
         }
@@ -100,7 +101,9 @@ impl TryFrom<AstNode> for InterpreterValue {
             AstNodeType::Fn { name, params, body } => todo!(),
             AstNodeType::Keyword(Keyword::True) => Ok(Self::Bool(true)),
             AstNodeType::Keyword(Keyword::False) => Ok(Self::Bool(false)),
-            _ => Err(InterpreterError::InvalidConstValue(value.clone(), value.line, value.col).into()),
+            _ => Err(
+                InterpreterError::InvalidConstValue(value.clone(), value.line, value.col).into(),
+            ),
         }
     }
 }
@@ -367,14 +370,7 @@ impl InterpreterScope {
                         }
                         Ok(scope.evaluate(&body)?)
                     }
-                    InterpreterValue::NativeFunction { body, .. } => {
-                        let mut values = Vec::new();
-                        for param in params.iter() {
-                            let value = self.evaluate(param)?;
-                            values.push(value);
-                        }
-                        body(self, values)
-                    }
+                    InterpreterValue::NativeFunction { body, .. } => body(self, params),
                     _ => {
                         if params.len() != 0 {
                             return Err(
@@ -401,6 +397,14 @@ impl InterpreterScope {
         let mut result = Rc::new(InterpreterValue::Void);
         for node in nodes.iter() {
             result = self.evaluate(node)?;
+        }
+        Ok(result)
+    }
+
+    pub fn evaluate_each(&mut self, nodes: &[AstNode]) -> Result<Vec<Rc<InterpreterValue>>> {
+        let mut result = Vec::new();
+        for node in nodes.iter() {
+            result.push(self.evaluate(node)?);
         }
         Ok(result)
     }

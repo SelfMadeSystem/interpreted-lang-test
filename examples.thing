@@ -1,0 +1,89 @@
+"
+Notes:
+- This language uses a mix of C and Lisp syntax. It is not meant to be a
+    practical language, but rather a language that is easy to implement.
+- This language has first-class functions.
+- Every (every) statement returns a value, even if it's just Void.
+"
+
+"PI is the following number:"
+const PI 3.141592654
+
+"Test let variable. Assumes a and b are either both ints or both floats."
+fn test(a, b) {
+    let a (+ a b)
+    a
+}
+
+"Fibonacci function."
+fn fib(n) {
+    if (== n 0) {
+        0
+    } else if (== n 1) {
+        1
+    } else {
+        (+ (fib (- n 1))
+           (fib (- n 2))
+        )
+    }
+}
+
+"Fibonacci function, using a loop."
+fn fib_loop(n) {
+    let a 0
+    let b 1
+    let i 0
+    while (!= i n) {
+        let c (+ a b)
+        set a b
+        set b c
+        set i (+ i 1)
+    }
+    a
+}
+
+"Testing inline functions."
+fn inline(a, b) {
+    fn increment() {
+        set a (+ a 1)
+    }
+
+    let i 0
+
+    while (!= i b) {
+        (increment)
+        set i (+ i 1)
+    }
+
+    a
+}
+
+"The main function."
+main {
+    (print (test 2 3))
+    (print (test (float (test 2 3)) PI))
+    (print (fib 5))
+    (print (fib 6))
+    (print (fib 7))
+    (print (fib_loop 8))
+    (print (== (* 2. PI) (+ PI PI)))
+    (print -3)
+    (print .3)
+    (print -.3)
+    (print (inline 5 3))
+}
+
+"
+Expected output:
+5
+8.141592654
+5
+8
+13
+21
+true
+-3
+0.3
+-0.3
+result: Void
+"
