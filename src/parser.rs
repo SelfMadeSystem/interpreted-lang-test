@@ -122,6 +122,7 @@ impl Parser {
             Some(Token::Keyword(Keyword::Let)) => self.parse_declaration(Keyword::Let),
             Some(Token::Keyword(Keyword::Set)) => self.parse_declaration(Keyword::Set),
             Some(Token::Keyword(Keyword::If)) => self.parse_if(),
+            Some(Token::Keyword(Keyword::While)) => self.parse_while(),
             Some(Token::Keyword(Keyword::True)) => {
                 self.tokens.next();
                 Ok(Some(AstNode::Bool(true)))
@@ -166,7 +167,12 @@ impl Parser {
                 let result = self.parse_if();
                 self.expect(Token::RParen)?;
                 return result;
-            },
+            }
+            Some(Token::Keyword(Keyword::While)) => {
+                let result = self.parse_while();
+                self.expect(Token::RParen)?;
+                return result;
+            }
             t => return Err(ParseError::new_opt_ref(t).into()),
         };
 
@@ -311,16 +317,6 @@ impl Parser {
         })))
     }
 
-    /// ex:
-    /// if (== n 0) {
-    ///    (print "n is 0")
-    /// }
-    /// 
-    /// if (== n 0) {
-    ///    (print "n is 0")
-    /// } else {
-    ///   (print "n is not 0")
-    /// }
     fn parse_if(&mut self) -> Result<Option<AstNode>> {
         self.expect(Token::Keyword(Keyword::If))?;
 
@@ -338,14 +334,21 @@ impl Parser {
 
         Ok(Some(AstNode::If {
             condition: Box::new(condition),
-            body: match body {
-                AstNode::Block(nodes) => nodes,
-                other => vec![other],
-            },
-            else_body: else_body.map(|else_body| match else_body {
-                AstNode::Block(nodes) => nodes,
-                other => vec![other],
-            }),
+            body: Box::new(body),
+            else_body: else_body.map(Box::new),
+        }))
+    }
+
+    fn parse_while(&mut self) -> Result<Option<AstNode>> {
+        self.expect(Token::Keyword(Keyword::While))?;
+
+        let condition = self.parse_ast_node()?.ok_or(ParseError::UnexpectedEof)?;
+
+        let body = self.parse_ast_node()?.ok_or(ParseError::UnexpectedEof)?;
+
+        Ok(Some(AstNode::While {
+            condition: Box::new(condition),
+            body: Box::new(body),
         }))
     }
 }

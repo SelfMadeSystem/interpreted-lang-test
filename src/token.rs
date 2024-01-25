@@ -9,6 +9,7 @@ pub enum Keyword {
     False,
     If,
     Else,
+    While,
 }
 
 impl TryFrom<&str> for Keyword {
@@ -25,6 +26,7 @@ impl TryFrom<&str> for Keyword {
             "false" => Ok(Self::False),
             "if" => Ok(Self::If),
             "else" => Ok(Self::Else),
+            "while" => Ok(Self::While),
             _ => Err(()),
         }
     }

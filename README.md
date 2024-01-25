@@ -15,7 +15,3 @@ The syntax has prefix notation. Honestly just look at [test.thing](./test.thing)
 for an example. I just wanted it to be easy to implement, and postfix/prefix notation is  very easy to implement.
 
 Functions are first-class, and can be passed around as arguments.
-
-If statements and while loops aren't technically implemented, but they've been
-implemented using native functions. This is why you have to wrap the condition
-and the body in an anonymous function.

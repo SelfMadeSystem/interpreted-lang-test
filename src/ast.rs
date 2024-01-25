@@ -28,8 +28,12 @@ pub enum AstNode {
     },
     If {
         condition: Box<AstNode>,
-        body: Vec<AstNode>,
-        else_body: Option<Vec<AstNode>>,
+        body: Box<AstNode>,
+        else_body: Option<Box<AstNode>>,
+    },
+    While {
+        condition: Box<AstNode>,
+        body: Box<AstNode>,
     },
     Main(Vec<AstNode>),
     Call {

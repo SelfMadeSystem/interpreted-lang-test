@@ -260,7 +260,11 @@ impl InterpreterScope {
                 self.replace(&name, value.clone())?;
                 Ok(value)
             }
-            AstNode::If { condition, body, else_body } => {
+            AstNode::If {
+                condition,
+                body,
+                else_body,
+            } => {
                 let condition = self.evaluate(condition)?;
                 let condition = match condition.as_ref() {
                     InterpreterValue::Bool(b) => *b,
@@ -274,12 +278,33 @@ impl InterpreterScope {
                     }
                 };
                 if condition {
-                    self.evaluate_block(body)
+                    self.evaluate(body)
                 } else {
                     match else_body {
-                        Some(else_body) => self.evaluate_block(else_body),
+                        Some(else_body) => self.evaluate(else_body),
                         None => Ok(Rc::new(InterpreterValue::Void)),
                     }
+                }
+            }
+            AstNode::While { condition, body } => {
+                let mut result = Rc::new(InterpreterValue::Void);
+                loop {
+                    let condition = self.evaluate(condition)?;
+                    let condition = match condition.as_ref() {
+                        InterpreterValue::Bool(b) => *b,
+                        _ => {
+                            self.dbg_print_vars();
+                            return Err(InterpreterError::InvalidType1Native(
+                                condition.get_type().to_string(),
+                                "bool".to_string(),
+                            )
+                            .into());
+                        }
+                    };
+                    if !condition {
+                        break Ok(result);
+                    }
+                    result = self.evaluate(body)?;
                 }
             }
             AstNode::Main(nodes) => todo!(),
