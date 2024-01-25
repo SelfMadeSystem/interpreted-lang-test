@@ -7,6 +7,8 @@ pub enum Keyword {
     Set,
     True,
     False,
+    If,
+    Else,
 }
 
 impl TryFrom<&str> for Keyword {
@@ -21,6 +23,8 @@ impl TryFrom<&str> for Keyword {
             "set" => Ok(Self::Set),
             "true" => Ok(Self::True),
             "false" => Ok(Self::False),
+            "if" => Ok(Self::If),
+            "else" => Ok(Self::Else),
             _ => Err(()),
         }
     }

@@ -255,54 +255,6 @@ pub fn default_native_functions() -> HashMap<String, NativeFn> {
         }
     });
 
-    functions.insert("if".to_string(), |scope, params| {
-        if params.len() < 2 || params.len() > 3 {
-            return Err(InterpreterError::InvalidFunctionCall("if".to_owned()).into());
-        }
-
-        let mut iter = params.into_iter();
-        let condition = iter.next().unwrap();
-        let if_true = iter.next().unwrap();
-        let if_false = iter.next();
-
-        let condition = match condition.as_ref() {
-            InterpreterValue::Bool(b) => *b,
-            _ => {
-                return Err(InterpreterError::InvalidType1Native(
-                    condition.get_type().to_string(),
-                    "if".to_owned(),
-                )
-                .into());
-            }
-        };
-
-        if condition {
-            match if_true.as_ref() {
-                InterpreterValue::Function { params, body, .. } => {
-                    let mut scope = scope.new_child();
-                    for param in params.iter() {
-                        scope.set(param, Rc::new(InterpreterValue::Void))?;
-                    }
-                    return Ok(scope.evaluate_block(body)?);
-                }
-                _ => return Ok(if_true),
-            }
-        } else if let Some(if_false) = if_false {
-            match if_false.as_ref() {
-                InterpreterValue::Function { params, body, .. } => {
-                    let mut scope = scope.new_child();
-                    for param in params.iter() {
-                        scope.set(param, Rc::new(InterpreterValue::Void))?;
-                    }
-                    return Ok(scope.evaluate_block(body)?);
-                }
-                _ => return Ok(if_false),
-            }
-        } else {
-            return Ok(Rc::new(InterpreterValue::Void));
-        }
-    });
-
     functions.insert("while".to_string(), |scope, params| {
         if params.len() != 2 {
             return Err(InterpreterError::InvalidFunctionCall("if".to_owned()).into());

@@ -26,6 +26,11 @@ pub enum AstNode {
         name: String,
         value: Box<AstNode>,
     },
+    If {
+        condition: Box<AstNode>,
+        body: Vec<AstNode>,
+        else_body: Option<Vec<AstNode>>,
+    },
     Main(Vec<AstNode>),
     Call {
         name: String,

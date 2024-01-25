@@ -260,6 +260,28 @@ impl InterpreterScope {
                 self.replace(&name, value.clone())?;
                 Ok(value)
             }
+            AstNode::If { condition, body, else_body } => {
+                let condition = self.evaluate(condition)?;
+                let condition = match condition.as_ref() {
+                    InterpreterValue::Bool(b) => *b,
+                    _ => {
+                        self.dbg_print_vars();
+                        return Err(InterpreterError::InvalidType1Native(
+                            condition.get_type().to_string(),
+                            "bool".to_string(),
+                        )
+                        .into());
+                    }
+                };
+                if condition {
+                    self.evaluate_block(body)
+                } else {
+                    match else_body {
+                        Some(else_body) => self.evaluate_block(else_body),
+                        None => Ok(Rc::new(InterpreterValue::Void)),
+                    }
+                }
+            }
             AstNode::Main(nodes) => todo!(),
             AstNode::Call { name, params } => {
                 let function = self.get(&name);

@@ -121,6 +121,7 @@ impl Parser {
             Some(Token::Keyword(Keyword::Const)) => self.parse_declaration(Keyword::Const),
             Some(Token::Keyword(Keyword::Let)) => self.parse_declaration(Keyword::Let),
             Some(Token::Keyword(Keyword::Set)) => self.parse_declaration(Keyword::Set),
+            Some(Token::Keyword(Keyword::If)) => self.parse_if(),
             Some(Token::Keyword(Keyword::True)) => {
                 self.tokens.next();
                 Ok(Some(AstNode::Bool(true)))
@@ -161,6 +162,11 @@ impl Parser {
                 self.expect(Token::RParen)?;
                 return result;
             }
+            Some(Token::Keyword(Keyword::If)) => {
+                let result = self.parse_if();
+                self.expect(Token::RParen)?;
+                return result;
+            },
             t => return Err(ParseError::new_opt_ref(t).into()),
         };
 
@@ -303,5 +309,43 @@ impl Parser {
             AstNode::Block(nodes) => nodes,
             _ => unreachable!(),
         })))
+    }
+
+    /// ex:
+    /// if (== n 0) {
+    ///    (print "n is 0")
+    /// }
+    /// 
+    /// if (== n 0) {
+    ///    (print "n is 0")
+    /// } else {
+    ///   (print "n is not 0")
+    /// }
+    fn parse_if(&mut self) -> Result<Option<AstNode>> {
+        self.expect(Token::Keyword(Keyword::If))?;
+
+        let condition = self.parse_ast_node()?.ok_or(ParseError::UnexpectedEof)?;
+
+        let body = self.parse_ast_node()?.ok_or(ParseError::UnexpectedEof)?;
+
+        let else_body = match self.tokens.peek() {
+            Some(Token::Keyword(Keyword::Else)) => {
+                self.tokens.next();
+                Some(self.parse_ast_node()?.ok_or(ParseError::UnexpectedEof)?)
+            }
+            _ => None,
+        };
+
+        Ok(Some(AstNode::If {
+            condition: Box::new(condition),
+            body: match body {
+                AstNode::Block(nodes) => nodes,
+                other => vec![other],
+            },
+            else_body: else_body.map(|else_body| match else_body {
+                AstNode::Block(nodes) => nodes,
+                other => vec![other],
+            }),
+        }))
     }
 }
