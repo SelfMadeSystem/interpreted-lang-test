@@ -111,7 +111,19 @@ impl<'a> Lexer<'a> {
                 }
             }
             '"' => self.parse_string()?,
-            c if c.is_digit(10) => self.parse_number()?,
+            c if c.is_digit(10) || c == '.' => self.parse_number().ok_or(self.unexpected_char())?,
+            c if c == '-' => {
+                let next = self.chars.peek();
+                if next.is_none() {
+                    return Err(self.unexpected_char().into());
+                }
+                let (_, next) = next.unwrap();
+                if next.is_digit(10) || next == &'.' {
+                    self.parse_number().ok_or(self.unexpected_char())?
+                } else {
+                    self.parse_ident()?
+                }
+            },
             _ => self.parse_ident()?,
         };
 
@@ -140,6 +152,11 @@ impl<'a> Lexer<'a> {
                         'n' => '\n',
                         'r' => '\r',
                         't' => '\t',
+                        '\n' => {
+                            self.line += 1;
+                            self.col = 0;
+                            continue;
+                        }
                         'u' => {
                             let mut hex = String::new();
                             for _ in 0..4 {
@@ -164,7 +181,7 @@ impl<'a> Lexer<'a> {
 
     /// Parse a number. Assumes the first character is a digit.
     /// I'm lazy so this doesn't support scientific notation or hex numbers.
-    fn parse_number(&mut self) -> Result<Token> {
+    fn parse_number(&mut self) -> Option<Token> {
         let mut number = String::new();
         let mut found_dot = false;
 
@@ -177,7 +194,7 @@ impl<'a> Lexer<'a> {
                     continue;
                 } else if c == '.' {
                     if found_dot {
-                        return Err(self.unexpected_char().into());
+                        return None;
                     }
                     found_dot = true;
                     number.push(c);
@@ -188,7 +205,7 @@ impl<'a> Lexer<'a> {
                 } else if c.is_whitespace() || DELIMITERS.contains(&c) {
                     break;
                 } else {
-                    return Err(self.unexpected_char().into());
+                    return None;
                 }
             }
             break;
@@ -198,12 +215,12 @@ impl<'a> Lexer<'a> {
             number
                 .parse::<f64>()
                 .map(Token::Float)
-                .map_err(|_| self.unexpected_char().into())
+                .ok()
         } else {
             number
                 .parse::<i64>()
                 .map(Token::Int)
-                .map_err(|_| self.unexpected_char().into())
+                .ok()
         }
     }
 

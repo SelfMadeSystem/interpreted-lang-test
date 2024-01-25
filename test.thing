@@ -72,6 +72,12 @@ main {
     (print (fib 6))
     (print (fib 7))
     (print (fib_loop 8))
+    (print -3)
+    (print .3)
+    (print -.3)
+    let -a "Variables can start with a dash, but they can't have a number or a \
+period as the second character."
+    (print -a)
 }
 
 "
