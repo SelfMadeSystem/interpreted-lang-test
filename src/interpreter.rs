@@ -16,6 +16,8 @@ pub enum InterpreterError {
     MultipleMainFunctions,
     #[error("No main function found")]
     NoMainFunction,
+    #[error("Main in inner scope")]
+    MainInInnerScope,
     #[error("Invalid function call for {0}")]
     InvalidFunctionCall(String),
     #[error("Invalid types {0} for {1}")]
@@ -241,7 +243,9 @@ impl InterpreterScope {
                         .collect(),
                     body: body.clone(),
                 });
-                self.set(&name, function.clone())?;
+                if !name.contains(" ") { // no spaces allowed in function names
+                    self.set(&name, function.clone())?;
+                }
                 Ok(function)
             }
             AstNode::Const { name, value } => {
@@ -269,10 +273,9 @@ impl InterpreterScope {
                 let condition = match condition.as_ref() {
                     InterpreterValue::Bool(b) => *b,
                     _ => {
-                        self.dbg_print_vars();
                         return Err(InterpreterError::InvalidType1Native(
                             condition.get_type().to_string(),
-                            "bool".to_string(),
+                            "if".to_string(),
                         )
                         .into());
                     }
@@ -293,10 +296,9 @@ impl InterpreterScope {
                     let condition = match condition.as_ref() {
                         InterpreterValue::Bool(b) => *b,
                         _ => {
-                            self.dbg_print_vars();
                             return Err(InterpreterError::InvalidType1Native(
                                 condition.get_type().to_string(),
-                                "bool".to_string(),
+                                "while".to_string(),
                             )
                             .into());
                         }
@@ -307,7 +309,7 @@ impl InterpreterScope {
                     result = self.evaluate(body)?;
                 }
             }
-            AstNode::Main(nodes) => todo!(),
+            AstNode::Main(_) => Err(InterpreterError::MainInInnerScope.into()),
             AstNode::Call { name, params } => {
                 let function = self.get(&name);
                 let function = match function {
@@ -335,7 +337,7 @@ impl InterpreterScope {
                         }
                         Ok(scope.evaluate_block(body)?)
                     }
-                    InterpreterValue::NativeFunction { name, body } => {
+                    InterpreterValue::NativeFunction { body, .. } => {
                         let mut values = Vec::new();
                         for param in params.iter() {
                             let value = self.evaluate(param)?;

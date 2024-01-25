@@ -1,0 +1,14 @@
+"Testing inline functions."
+fn inline(a) {
+    fn increment() {
+        set a (+ a 1)
+    }
+
+    (increment)
+
+    a
+}
+
+main {
+    (print (inline 1))
+}

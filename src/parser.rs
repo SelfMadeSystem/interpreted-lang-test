@@ -158,21 +158,6 @@ impl Parser {
                 self.tokens.next();
                 i
             }
-            Some(Token::Keyword(Keyword::Fn)) => {
-                let result = self.parse_fn(false);
-                self.expect(Token::RParen)?;
-                return result;
-            }
-            Some(Token::Keyword(Keyword::If)) => {
-                let result = self.parse_if();
-                self.expect(Token::RParen)?;
-                return result;
-            }
-            Some(Token::Keyword(Keyword::While)) => {
-                let result = self.parse_while();
-                self.expect(Token::RParen)?;
-                return result;
-            }
             t => return Err(ParseError::new_opt_ref(t).into()),
         };
 
