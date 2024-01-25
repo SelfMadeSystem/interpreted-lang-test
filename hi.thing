@@ -1,19 +1,35 @@
-"Testing inline functions."
-fn inline(a, b) {
-    fn increment() {
-        set a (+ a 1)
-    }
-
-    let i 0
-
-    while (!= i b) {
-        (increment)
-        set i (+ i 1)
-    }
-
-    a
-}
-
 main {
-    (print (inline 3 5))
+    "Create a function named `hello` that takes a parameter named `owo`, prints
+    `owo`, and returns `owo`."
+    fn hello(owo){
+        "Print `owo`."
+        (print owo)
+        "Return `owo`."
+        owo
+    }
+    "Call `hello` with the string `\"hello\"`."
+    (hello "hello")
+    "Call `hello` with the function `hello` (functions are first-class)."
+    (hello hello)
+
+    "Create an anonymous function that takes a parameter named `owo`, prints
+    `owo`, and returns `owo`. Assign it to a variable named `hi`."
+    const hi fn(owo){
+        (print owo)
+        owo
+    }
+    "Call `hi` with the string `\"howdy\"`."
+    (hi "howdy")
+    "Call `hi` with the function `hello`."
+    (hi hi)
 }
+
+"
+Expected output:
+
+hello
+Function { name: hello, params: [\"owo\"], }
+howdy
+Function { name: Anonymous Function, params: [\"owo\"], }
+
+"

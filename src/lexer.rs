@@ -32,7 +32,7 @@ impl<'a> Lexer<'a> {
         Self {
             chars,
             current: None,
-            line: 0,
+            line: 1,
             col: 0,
         }
     }

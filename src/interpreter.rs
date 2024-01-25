@@ -10,12 +10,12 @@ use crate::{
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum InterpreterError {
     // TODO: Add line and column numbers to all errors
-    #[error("Variable {0} not found")]
-    VariableNotFound(String),
-    #[error("Function {0} not found")]
-    FunctionNotFound(String),
-    #[error("Invalid const value {0:?}")]
-    InvalidConstValue(AstNode),
+    #[error("Variable {0} not found at {1}:{2}")]
+    VariableNotFound(String, usize, usize),
+    #[error("Function {0} not found at {1}:{2}")]
+    FunctionNotFound(String, usize, usize),
+    #[error("Invalid const value {0:?} at {1}:{2}")]
+    InvalidConstValue(AstNode, usize, usize),
     #[error("Multiple main functions found. First at {0}:{1}, second at {2}:{3}")]
     MultipleMainFunctions(usize, usize, usize, usize),
     #[error("No main function found")]
@@ -100,7 +100,7 @@ impl TryFrom<AstNode> for InterpreterValue {
             AstNodeType::Fn { name, params, body } => todo!(),
             AstNodeType::Keyword(Keyword::True) => Ok(Self::Bool(true)),
             AstNodeType::Keyword(Keyword::False) => Ok(Self::Bool(false)),
-            _ => Err(InterpreterError::InvalidConstValue(value).into()),
+            _ => Err(InterpreterError::InvalidConstValue(value.clone(), value.line, value.col).into()),
         }
     }
 }
@@ -181,7 +181,10 @@ pub struct InterpreterScope {
 /// I know this is unsafe, but I'm not sure how to do it otherwise without
 /// making the code more complicated.
 fn g<'a>(parent: &*mut InterpreterScope) -> &'a mut InterpreterScope {
-    unsafe { parent.as_mut().unwrap() }
+    if parent.is_null() {
+        panic!("Parent is null");
+    }
+    unsafe { &mut **parent }
 }
 
 impl InterpreterScope {
@@ -199,16 +202,16 @@ impl InterpreterScope {
         }
     }
 
-    pub fn get(&self, name: &str) -> Result<Rc<InterpreterValue>> {
+    pub fn get(&self, name: &str, line: usize, col: usize) -> Result<Rc<InterpreterValue>> {
         if let Some(value) = self.variables.get(name) {
             return Ok(value.clone());
         }
 
         if let Some(parent) = self.parent.as_ref() {
-            return g(parent).get(name);
+            return g(parent).get(name, line, col);
         }
 
-        Err(InterpreterError::VariableNotFound(name.to_string()).into())
+        Err(InterpreterError::VariableNotFound(name.to_string(), line, col).into())
     }
 
     pub fn set(&mut self, name: &str, value: Rc<InterpreterValue>) -> Result<()> {
@@ -216,17 +219,23 @@ impl InterpreterScope {
         Ok(())
     }
 
-    pub fn replace(&mut self, name: &str, value: Rc<InterpreterValue>) -> Result<()> {
+    pub fn replace(
+        &mut self,
+        name: &str,
+        value: Rc<InterpreterValue>,
+        line: usize,
+        col: usize,
+    ) -> Result<()> {
         if self.variables.contains_key(name) {
             self.variables.insert(name.to_string(), value);
             return Ok(());
         }
 
         if let Some(parent) = self.parent.as_ref() {
-            return g(parent).replace(name, value);
+            return g(parent).replace(name, value, line, col);
         }
 
-        Err(InterpreterError::VariableNotFound(name.to_string()).into())
+        Err(InterpreterError::VariableNotFound(name.to_string(), line, col).into())
     }
 
     fn dbg_print_vars(&self) {
@@ -273,9 +282,9 @@ impl InterpreterScope {
                 self.set(&name, value.clone())?;
                 Ok(value)
             }
-            AstNodeType::Set { name, value } => {
-                let value = self.evaluate(&value)?;
-                self.replace(&name, value.clone())?;
+            AstNodeType::Set { name, value: node } => {
+                let value = self.evaluate(&node)?;
+                self.replace(&name, value.clone(), node.line, node.col)?;
                 Ok(value)
             }
             AstNodeType::If {
@@ -327,12 +336,17 @@ impl InterpreterScope {
                 Err(InterpreterError::MainInInnerScope(node.line, node.col).into())
             }
             AstNodeType::Call { name, params } => {
-                let function = self.get(&name);
+                let function = self.get(&name, node.line, node.col);
                 let function = match function {
                     Ok(function) => function,
                     Err(_) => {
                         self.dbg_print_vars();
-                        return Err(InterpreterError::FunctionNotFound(name.to_string()).into());
+                        return Err(InterpreterError::FunctionNotFound(
+                            name.to_string(),
+                            node.line,
+                            node.col,
+                        )
+                        .into());
                     }
                 };
                 match function.as_ref() {
@@ -376,7 +390,7 @@ impl InterpreterScope {
                 scope.evaluate_block(&nodes)
             }
             AstNodeType::Ident(ident) => {
-                let value = self.get(&ident)?;
+                let value = self.get(&ident, node.line, node.col)?;
                 Ok(value)
             }
             AstNodeType::Keyword(keyword) => todo!("{:?}", keyword),
