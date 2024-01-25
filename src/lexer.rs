@@ -5,7 +5,7 @@ use std::{
 };
 use thiserror::Error;
 
-use crate::token::Token;
+use crate::token::{Token, TokenType};
 
 const DELIMITERS: [char; 7] = [',', '(', ')', '{', '}', '[', ']'];
 
@@ -34,6 +34,15 @@ impl<'a> Lexer<'a> {
             current: None,
             line: 0,
             col: 0,
+        }
+    }
+
+    /// Creates a new Token from a TokenType
+    fn new_token(&self, ty: TokenType) -> Token {
+        Token {
+            ty,
+            line: self.line,
+            col: self.col,
         }
     }
 
@@ -85,14 +94,14 @@ impl<'a> Lexer<'a> {
                                         break c;
                                     }
                                 }
-                                None => return Ok(Token::Eof),
+                                None => return Ok(self.new_token(TokenType::Eof)),
                             }
                         }
                     } else {
                         c
                     }
                 }
-                None => return Ok(Token::Eof),
+                None => return Ok(self.new_token(TokenType::Eof)),
             }
         };
 
@@ -100,13 +109,13 @@ impl<'a> Lexer<'a> {
             c if DELIMITERS.contains(&c) => {
                 self.next_char();
                 match c {
-                    ',' => Token::Comma,
-                    '(' => Token::LParen,
-                    ')' => Token::RParen,
-                    '{' => Token::LBrace,
-                    '}' => Token::RBrace,
-                    '[' => Token::LBracket,
-                    ']' => Token::RBracket,
+                    ',' => self.new_token(TokenType::Comma),
+                    '(' => self.new_token(TokenType::LParen),
+                    ')' => self.new_token(TokenType::RParen),
+                    '{' => self.new_token(TokenType::LBrace),
+                    '}' => self.new_token(TokenType::RBrace),
+                    '[' => self.new_token(TokenType::LBracket),
+                    ']' => self.new_token(TokenType::RBracket),
                     _ => unreachable!(),
                 }
             }
@@ -123,7 +132,7 @@ impl<'a> Lexer<'a> {
                 } else {
                     self.parse_ident()?
                 }
-            },
+            }
             _ => self.parse_ident()?,
         };
 
@@ -176,7 +185,7 @@ impl<'a> Lexer<'a> {
             }
         }
 
-        Ok(Token::String(string))
+        Ok(self.new_token(TokenType::String(string)))
     }
 
     /// Parse a number. Assumes the first character is a digit.
@@ -214,12 +223,14 @@ impl<'a> Lexer<'a> {
         if number.contains('.') {
             number
                 .parse::<f64>()
-                .map(Token::Float)
+                .map(TokenType::Float)
+                .map(|t| self.new_token(t))
                 .ok()
         } else {
             number
                 .parse::<i64>()
-                .map(Token::Int)
+                .map(TokenType::Int)
+                .map(|t| self.new_token(t))
                 .ok()
         }
     }
@@ -240,7 +251,7 @@ impl<'a> Lexer<'a> {
             }
         }
 
-        Ok(Token::new_ident(ident.as_str()))
+        Ok(self.new_token(TokenType::new_ident(ident.as_str())))
     }
 
     /// Parse all tokens from the input.
@@ -249,7 +260,9 @@ impl<'a> Lexer<'a> {
 
         loop {
             match self.next_token() {
-                Ok(Token::Eof) => break,
+                Ok(Token {
+                    ty: TokenType::Eof, ..
+                }) => break,
                 Ok(token) => tokens.push(token),
                 Err(e) => return Err(e.into()),
             }
@@ -267,8 +280,8 @@ mod tests {
     fn test_parse_string() {
         let mut lexer = Lexer::new(r#""Hello, world!\nNext line\u0420""#);
         assert_eq!(
-            lexer.next_token().unwrap(),
-            Token::String("Hello, world!\nNext line\u{0420}".to_string())
+            lexer.next_token().unwrap().ty,
+            TokenType::String("Hello, world!\nNext line\u{0420}".to_string())
         );
 
         let mut lexer = Lexer::new(r#""Invalid escape sequence: \z""#);
@@ -278,13 +291,22 @@ mod tests {
     #[test]
     fn test_parse_number() {
         let mut lexer = Lexer::new("1234");
-        assert_eq!(lexer.next_token().unwrap(), Token::Int(1234));
+        assert_eq!(
+            lexer.next_token().unwrap().ty,
+            TokenType::Int(1234)
+        );
 
         let mut lexer = Lexer::new("1234.5678");
-        assert_eq!(lexer.next_token().unwrap(), Token::Float(1234.5678));
+        assert_eq!(
+            lexer.next_token().unwrap().ty,
+            TokenType::Float(1234.5678)
+        );
 
         let mut lexer = Lexer::new("1234.");
-        assert_eq!(lexer.next_token().unwrap(), Token::Float(1234.0));
+        assert_eq!(
+            lexer.next_token().unwrap().ty,
+            TokenType::Float(1234.0)
+        );
 
         let mut lexer = Lexer::new("1234.5678.91011");
         assert!(lexer.next_token().is_err());
@@ -294,38 +316,38 @@ mod tests {
     fn test_parse_ident() {
         let mut lexer = Lexer::new("hello");
         assert_eq!(
-            lexer.next_token().unwrap(),
-            Token::Ident("hello".to_string())
+            lexer.next_token().unwrap().ty,
+            TokenType::Ident("hello".to_string())
         );
 
         let mut lexer = Lexer::new("hello world");
         assert_eq!(
-            lexer.next_token().unwrap(),
-            Token::Ident("hello".to_string())
+            lexer.next_token().unwrap().ty,
+            TokenType::Ident("hello".to_string())
         );
 
         let mut lexer = Lexer::new("hello, world");
         assert_eq!(
-            lexer.next_token().unwrap(),
-            Token::Ident("hello".to_string())
+            lexer.next_token().unwrap().ty,
+            TokenType::Ident("hello".to_string())
         );
 
         let mut lexer = Lexer::new("hello_world");
         assert_eq!(
-            lexer.next_token().unwrap(),
-            Token::Ident("hello_world".to_string())
+            lexer.next_token().unwrap().ty,
+            TokenType::Ident("hello_world".to_string())
         );
 
         let mut lexer = Lexer::new("hello_world_1234");
         assert_eq!(
-            lexer.next_token().unwrap(),
-            Token::Ident("hello_world_1234".to_string())
+            lexer.next_token().unwrap().ty,
+            TokenType::Ident("hello_world_1234".to_string())
         );
 
         let mut lexer = Lexer::new("hello world 1234");
         assert_eq!(
-            lexer.next_token().unwrap(),
-            Token::Ident("hello".to_string())
+            lexer.next_token().unwrap().ty,
+            TokenType::Ident("hello".to_string())
         );
     }
 
@@ -350,54 +372,57 @@ mod tests {
         "#,
         );
 
-        fn next(lexer: &mut Lexer) -> Token {
-            lexer.next_token().unwrap()
+        fn next(lexer: &mut Lexer) -> TokenType {
+            lexer.next_token().unwrap().ty
         }
 
-        assert_eq!(next(&mut lexer), Token::LBrace);
-        assert_eq!(next(&mut lexer), Token::String("hello".to_string()));
-        assert_eq!(next(&mut lexer), Token::Ident(":".to_string()));
-        assert_eq!(next(&mut lexer), Token::String("world".to_string()));
-        assert_eq!(next(&mut lexer), Token::Comma);
-        assert_eq!(next(&mut lexer), Token::String("foo".to_string()));
-        assert_eq!(next(&mut lexer), Token::Ident(":".to_string()));
-        assert_eq!(next(&mut lexer), Token::Int(1234));
-        assert_eq!(next(&mut lexer), Token::Comma);
-        assert_eq!(next(&mut lexer), Token::String("bar".to_string()));
-        assert_eq!(next(&mut lexer), Token::Ident(":".to_string()));
-        assert_eq!(next(&mut lexer), Token::Float(1234.5678));
-        assert_eq!(next(&mut lexer), Token::Comma);
-        assert_eq!(next(&mut lexer), Token::String("baz".to_string()));
-        assert_eq!(next(&mut lexer), Token::Ident(":".to_string()));
-        assert_eq!(next(&mut lexer), Token::LBracket);
-        assert_eq!(next(&mut lexer), Token::String("hello".to_string()));
-        assert_eq!(next(&mut lexer), Token::Comma);
-        assert_eq!(next(&mut lexer), Token::String("world".to_string()));
-        assert_eq!(next(&mut lexer), Token::Comma);
-        assert_eq!(next(&mut lexer), Token::Int(1234));
-        assert_eq!(next(&mut lexer), Token::Comma);
-        assert_eq!(next(&mut lexer), Token::Float(1234.5678));
-        assert_eq!(next(&mut lexer), Token::Comma);
-        assert_eq!(next(&mut lexer), Token::Ident("true".to_string()));
-        assert_eq!(next(&mut lexer), Token::Comma);
-        assert_eq!(next(&mut lexer), Token::Ident("false".to_string()));
-        assert_eq!(next(&mut lexer), Token::Comma);
-        assert_eq!(next(&mut lexer), Token::Ident("null".to_string()));
-        assert_eq!(next(&mut lexer), Token::RBracket);
-        assert_eq!(next(&mut lexer), Token::RBrace);
-        assert_eq!(next(&mut lexer), Token::Eof);
+        assert_eq!(next(&mut lexer), TokenType::LBrace);
+        assert_eq!(next(&mut lexer), TokenType::String("hello".to_string()));
+        assert_eq!(next(&mut lexer), TokenType::Ident(":".to_string()));
+        assert_eq!(next(&mut lexer), TokenType::String("world".to_string()));
+        assert_eq!(next(&mut lexer), TokenType::Comma);
+        assert_eq!(next(&mut lexer), TokenType::String("foo".to_string()));
+        assert_eq!(next(&mut lexer), TokenType::Ident(":".to_string()));
+        assert_eq!(next(&mut lexer), TokenType::Int(1234));
+        assert_eq!(next(&mut lexer), TokenType::Comma);
+        assert_eq!(next(&mut lexer), TokenType::String("bar".to_string()));
+        assert_eq!(next(&mut lexer), TokenType::Ident(":".to_string()));
+        assert_eq!(next(&mut lexer), TokenType::Float(1234.5678));
+        assert_eq!(next(&mut lexer), TokenType::Comma);
+        assert_eq!(next(&mut lexer), TokenType::String("baz".to_string()));
+        assert_eq!(next(&mut lexer), TokenType::Ident(":".to_string()));
+        assert_eq!(next(&mut lexer), TokenType::LBracket);
+        assert_eq!(next(&mut lexer), TokenType::String("hello".to_string()));
+        assert_eq!(next(&mut lexer), TokenType::Comma);
+        assert_eq!(next(&mut lexer), TokenType::String("world".to_string()));
+        assert_eq!(next(&mut lexer), TokenType::Comma);
+        assert_eq!(next(&mut lexer), TokenType::Int(1234));
+        assert_eq!(next(&mut lexer), TokenType::Comma);
+        assert_eq!(next(&mut lexer), TokenType::Float(1234.5678));
+        assert_eq!(next(&mut lexer), TokenType::Comma);
+        assert_eq!(next(&mut lexer), TokenType::Ident("true".to_string()));
+        assert_eq!(next(&mut lexer), TokenType::Comma);
+        assert_eq!(next(&mut lexer), TokenType::Ident("false".to_string()));
+        assert_eq!(next(&mut lexer), TokenType::Comma);
+        assert_eq!(next(&mut lexer), TokenType::Ident("null".to_string()));
+        assert_eq!(next(&mut lexer), TokenType::RBracket);
+        assert_eq!(next(&mut lexer), TokenType::RBrace);
+        assert_eq!(next(&mut lexer), TokenType::Eof);
     }
 
     #[test]
     fn test_empty_input() {
         let mut lexer = Lexer::new("");
-        assert_eq!(lexer.next_token().unwrap(), Token::Eof);
+        assert_eq!(lexer.next_token().unwrap().ty, TokenType::Eof);
     }
 
     #[test]
     fn test_this_shouldnt_be_invalid_character() {
         let mut lexer = Lexer::new("@");
-        assert_eq!(lexer.next_token().unwrap(), Token::Ident("@".to_string()));
+        assert_eq!(
+            lexer.next_token().unwrap().ty,
+            TokenType::Ident("@".to_string())
+        );
     }
 
     #[test]
@@ -410,28 +435,82 @@ mod tests {
     fn test_large_input() {
         let input = std::iter::repeat("a").take(1000000).collect::<String>();
         let mut lexer = Lexer::new(&input);
-        assert_eq!(lexer.next_token().unwrap(), Token::Ident(input));
+        assert_eq!(
+            lexer.next_token().unwrap().ty,
+            TokenType::Ident(input)
+        );
     }
 
     #[test]
     fn test_nested_structures() {
         let mut lexer = Lexer::new("[[1, 2, 3], [4, 5, 6]]");
-        assert_eq!(lexer.next_token().unwrap(), Token::LBracket);
-        assert_eq!(lexer.next_token().unwrap(), Token::LBracket);
-        assert_eq!(lexer.next_token().unwrap(), Token::Int(1));
-        assert_eq!(lexer.next_token().unwrap(), Token::Comma);
-        assert_eq!(lexer.next_token().unwrap(), Token::Int(2));
-        assert_eq!(lexer.next_token().unwrap(), Token::Comma);
-        assert_eq!(lexer.next_token().unwrap(), Token::Int(3));
-        assert_eq!(lexer.next_token().unwrap(), Token::RBracket);
-        assert_eq!(lexer.next_token().unwrap(), Token::Comma);
-        assert_eq!(lexer.next_token().unwrap(), Token::LBracket);
-        assert_eq!(lexer.next_token().unwrap(), Token::Int(4));
-        assert_eq!(lexer.next_token().unwrap(), Token::Comma);
-        assert_eq!(lexer.next_token().unwrap(), Token::Int(5));
-        assert_eq!(lexer.next_token().unwrap(), Token::Comma);
-        assert_eq!(lexer.next_token().unwrap(), Token::Int(6));
-        assert_eq!(lexer.next_token().unwrap(), Token::RBracket);
-        assert_eq!(lexer.next_token().unwrap(), Token::RBracket);
+        assert_eq!(
+            lexer.next_token().unwrap().ty,
+            TokenType::LBracket
+        );
+        assert_eq!(
+            lexer.next_token().unwrap().ty,
+            TokenType::LBracket
+        );
+        assert_eq!(
+            lexer.next_token().unwrap().ty,
+            TokenType::Int(1)
+        );
+        assert_eq!(
+            lexer.next_token().unwrap().ty,
+            TokenType::Comma
+        );
+        assert_eq!(
+            lexer.next_token().unwrap().ty,
+            TokenType::Int(2)
+        );
+        assert_eq!(
+            lexer.next_token().unwrap().ty,
+            TokenType::Comma
+        );
+        assert_eq!(
+            lexer.next_token().unwrap().ty,
+            TokenType::Int(3)
+        );
+        assert_eq!(
+            lexer.next_token().unwrap().ty,
+            TokenType::RBracket
+        );
+        assert_eq!(
+            lexer.next_token().unwrap().ty,
+            TokenType::Comma
+        );
+        assert_eq!(
+            lexer.next_token().unwrap().ty,
+            TokenType::LBracket
+        );
+        assert_eq!(
+            lexer.next_token().unwrap().ty,
+            TokenType::Int(4)
+        );
+        assert_eq!(
+            lexer.next_token().unwrap().ty,
+            TokenType::Comma
+        );
+        assert_eq!(
+            lexer.next_token().unwrap().ty,
+            TokenType::Int(5)
+        );
+        assert_eq!(
+            lexer.next_token().unwrap().ty,
+            TokenType::Comma
+        );
+        assert_eq!(
+            lexer.next_token().unwrap().ty,
+            TokenType::Int(6)
+        );
+        assert_eq!(
+            lexer.next_token().unwrap().ty,
+            TokenType::RBracket
+        );
+        assert_eq!(
+            lexer.next_token().unwrap().ty,
+            TokenType::RBracket
+        );
     }
 }

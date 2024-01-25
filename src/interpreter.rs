@@ -2,22 +2,26 @@ use std::{collections::HashMap, rc::Rc};
 
 use anyhow::{Error, Result};
 
-use crate::{ast::AstNode, token::Keyword};
+use crate::{
+    ast::{AstNode, AstNodeType},
+    token::Keyword,
+};
 
 #[derive(Debug, Clone, thiserror::Error)]
 pub enum InterpreterError {
+    // TODO: Add line and column numbers to all errors
     #[error("Variable {0} not found")]
     VariableNotFound(String),
     #[error("Function {0} not found")]
     FunctionNotFound(String),
     #[error("Invalid const value {0:?}")]
     InvalidConstValue(AstNode),
-    #[error("Multiple main functions found")]
-    MultipleMainFunctions,
+    #[error("Multiple main functions found. First at {0}:{1}, second at {2}:{3}")]
+    MultipleMainFunctions(usize, usize, usize, usize),
     #[error("No main function found")]
     NoMainFunction,
-    #[error("Main in inner scope")]
-    MainInInnerScope,
+    #[error("Main in inner scope. Found at {0}:{1}")]
+    MainInInnerScope(usize, usize),
     #[error("Invalid function call for {0}")]
     InvalidFunctionCall(String),
     #[error("Invalid types {0} for {1}")]
@@ -40,7 +44,7 @@ pub enum InterpreterValue {
     Function {
         name: String,
         params: Vec<String>,
-        body: Vec<AstNode>,
+        body: Box<AstNode>,
     },
     NativeFunction {
         name: String,
@@ -88,14 +92,14 @@ impl TryFrom<AstNode> for InterpreterValue {
     type Error = Error;
 
     fn try_from(value: AstNode) -> Result<Self, Self::Error> {
-        match value {
-            AstNode::Int(value) => Ok(Self::Int(value)),
-            AstNode::Float(value) => Ok(Self::Float(value)),
-            AstNode::String(value) => Ok(Self::String(value)),
-            AstNode::Array(value) => todo!(),
-            AstNode::Fn { name, params, body } => todo!(),
-            AstNode::Keyword(Keyword::True) => Ok(Self::Bool(true)),
-            AstNode::Keyword(Keyword::False) => Ok(Self::Bool(false)),
+        match value.ty {
+            AstNodeType::Int(value) => Ok(Self::Int(value)),
+            AstNodeType::Float(value) => Ok(Self::Float(value)),
+            AstNodeType::String(value) => Ok(Self::String(value)),
+            AstNodeType::Array(value) => todo!(),
+            AstNodeType::Fn { name, params, body } => todo!(),
+            AstNodeType::Keyword(Keyword::True) => Ok(Self::Bool(true)),
+            AstNodeType::Keyword(Keyword::False) => Ok(Self::Bool(false)),
             _ => Err(InterpreterError::InvalidConstValue(value).into()),
         }
     }
@@ -110,13 +114,13 @@ pub struct Interpreter {
 impl Interpreter {
     fn find_constants(&mut self) -> Result<()> {
         for node in self.ast.iter() {
-            match node {
-                AstNode::Const { name, value } => {
+            match &node.ty {
+                AstNodeType::Const { name, value } => {
                     self.top_scope
                         .variables
                         .insert(name.clone(), Rc::new((*value.clone()).try_into()?));
                 }
-                AstNode::Fn { name, params, body } => {
+                AstNodeType::Fn { name, params, body } => {
                     self.top_scope.variables.insert(
                         name.clone(),
                         Rc::new(InterpreterValue::Function {
@@ -125,7 +129,10 @@ impl Interpreter {
                                 .clone()
                                 .into_iter()
                                 .map(|p| match p {
-                                    AstNode::Ident(i) => i,
+                                    AstNode {
+                                        ty: AstNodeType::Ident(i),
+                                        ..
+                                    } => i,
                                     _ => unreachable!(),
                                 })
                                 .collect(),
@@ -140,22 +147,28 @@ impl Interpreter {
         Ok(())
     }
 
-    fn find_main(&self) -> Result<Vec<AstNode>> {
-        let mut main = None;
+    fn find_main(&self) -> Result<AstNode> {
+        let mut main: Option<(AstNode, AstNode)> = None;
 
         for node in self.ast.iter() {
-            match node {
-                AstNode::Main(nodes) => {
+            match &node.ty {
+                AstNodeType::Main(nodes) => {
                     if main.is_some() {
-                        return Err(InterpreterError::MultipleMainFunctions.into());
+                        return Err(InterpreterError::MultipleMainFunctions(
+                            main.as_ref().unwrap().0.line,
+                            main.as_ref().unwrap().0.col,
+                            nodes.line,
+                            nodes.col,
+                        )
+                        .into());
                     }
-                    main = Some(nodes.clone());
+                    main = Some((node.clone(), *nodes.clone()));
                 }
                 _ => {}
             }
         }
 
-        Ok(main.ok_or(InterpreterError::NoMainFunction)?)
+        Ok(main.map(|m| m.1).ok_or(InterpreterError::NoMainFunction)?)
     }
 }
 
@@ -224,52 +237,53 @@ impl InterpreterScope {
     }
 
     pub fn evaluate(&mut self, node: &AstNode) -> Result<Rc<InterpreterValue>> {
-        match node {
-            AstNode::Int(value) => Ok(Rc::new(InterpreterValue::Int(*value))),
-            AstNode::Float(value) => Ok(Rc::new(InterpreterValue::Float(*value))),
-            AstNode::String(value) => Ok(Rc::new(InterpreterValue::String(value.clone()))),
-            AstNode::Bool(b) => Ok(Rc::new(InterpreterValue::Bool(*b))),
-            AstNode::Array(value) => todo!(),
-            AstNode::Fn { name, params, body } => {
+        match &node.ty {
+            AstNodeType::Int(value) => Ok(Rc::new(InterpreterValue::Int(*value))),
+            AstNodeType::Float(value) => Ok(Rc::new(InterpreterValue::Float(*value))),
+            AstNodeType::String(value) => Ok(Rc::new(InterpreterValue::String(value.clone()))),
+            AstNodeType::Bool(b) => Ok(Rc::new(InterpreterValue::Bool(*b))),
+            AstNodeType::Array(value) => todo!(),
+            AstNodeType::Fn { name, params, body } => {
                 let function = Rc::new(InterpreterValue::Function {
                     name: name.clone(),
                     params: params
                         .clone()
                         .into_iter()
-                        .map(|p| match p {
-                            AstNode::Ident(i) => i,
-                            _ => unreachable!(),
+                        .map(|p| match p.ty {
+                            AstNodeType::Ident(i) => i,
+                            _ => panic!(), // TODO: Better error handling
                         })
                         .collect(),
                     body: body.clone(),
                 });
-                if !name.contains(" ") { // no spaces allowed in function names
+                if !name.contains(" ") {
+                    // no spaces allowed in function names
                     self.set(&name, function.clone())?;
                 }
                 Ok(function)
             }
-            AstNode::Const { name, value } => {
+            AstNodeType::Const { name, value } => {
                 // TODO: Allow for immutable variables
-                let value = self.evaluate(value)?;
+                let value = self.evaluate(&value)?;
                 self.set(&name, value.clone())?;
                 Ok(value)
             }
-            AstNode::Let { name, value } => {
-                let value = self.evaluate(value)?;
+            AstNodeType::Let { name, value } => {
+                let value = self.evaluate(&value)?;
                 self.set(&name, value.clone())?;
                 Ok(value)
             }
-            AstNode::Set { name, value } => {
-                let value = self.evaluate(value)?;
+            AstNodeType::Set { name, value } => {
+                let value = self.evaluate(&value)?;
                 self.replace(&name, value.clone())?;
                 Ok(value)
             }
-            AstNode::If {
+            AstNodeType::If {
                 condition,
                 body,
                 else_body,
             } => {
-                let condition = self.evaluate(condition)?;
+                let condition = self.evaluate(&condition)?;
                 let condition = match condition.as_ref() {
                     InterpreterValue::Bool(b) => *b,
                     _ => {
@@ -281,18 +295,18 @@ impl InterpreterScope {
                     }
                 };
                 if condition {
-                    self.evaluate(body)
+                    self.evaluate(&body)
                 } else {
                     match else_body {
-                        Some(else_body) => self.evaluate(else_body),
+                        Some(else_body) => self.evaluate(&else_body),
                         None => Ok(Rc::new(InterpreterValue::Void)),
                     }
                 }
             }
-            AstNode::While { condition, body } => {
+            AstNodeType::While { condition, body } => {
                 let mut result = Rc::new(InterpreterValue::Void);
                 loop {
-                    let condition = self.evaluate(condition)?;
+                    let condition = self.evaluate(&condition)?;
                     let condition = match condition.as_ref() {
                         InterpreterValue::Bool(b) => *b,
                         _ => {
@@ -306,11 +320,13 @@ impl InterpreterScope {
                     if !condition {
                         break Ok(result);
                     }
-                    result = self.evaluate(body)?;
+                    result = self.evaluate(&body)?;
                 }
             }
-            AstNode::Main(_) => Err(InterpreterError::MainInInnerScope.into()),
-            AstNode::Call { name, params } => {
+            AstNodeType::Main(_) => {
+                Err(InterpreterError::MainInInnerScope(node.line, node.col).into())
+            }
+            AstNodeType::Call { name, params } => {
                 let function = self.get(&name);
                 let function = match function {
                     Ok(function) => function,
@@ -335,7 +351,7 @@ impl InterpreterScope {
                             let value = scope.evaluate(value)?;
                             scope.set(param, value)?;
                         }
-                        Ok(scope.evaluate_block(body)?)
+                        Ok(scope.evaluate(&body)?)
                     }
                     InterpreterValue::NativeFunction { body, .. } => {
                         let mut values = Vec::new();
@@ -355,12 +371,15 @@ impl InterpreterScope {
                     }
                 }
             }
-            AstNode::Block(nodes) => self.evaluate_block(nodes),
-            AstNode::Ident(ident) => {
-                let value = self.get(ident)?;
+            AstNodeType::Block(nodes) => {
+                let mut scope = InterpreterScope::new_child(self);
+                scope.evaluate_block(&nodes)
+            }
+            AstNodeType::Ident(ident) => {
+                let value = self.get(&ident)?;
                 Ok(value)
             }
-            AstNode::Keyword(keyword) => todo!("{:?}", keyword),
+            AstNodeType::Keyword(keyword) => todo!("{:?}", keyword),
         }
     }
 
@@ -396,7 +415,7 @@ pub fn interpret(
 
     let main = interpreter.find_main()?;
 
-    let result = interpreter.top_scope.evaluate_block(&main)?;
+    let result = interpreter.top_scope.evaluate(&main)?;
 
     Ok(result)
 }

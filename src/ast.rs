@@ -2,7 +2,14 @@ use crate::token::Keyword;
 
 /// An abstract syntax tree node
 #[derive(Debug, Clone, PartialEq)]
-pub enum AstNode {
+pub struct AstNode {
+    pub ty: AstNodeType,
+    pub line: usize,
+    pub col: usize,
+}
+
+#[derive(Debug, Clone, PartialEq)]
+pub enum AstNodeType {
     Int(i64),
     Float(f64),
     String(String),
@@ -12,7 +19,7 @@ pub enum AstNode {
     Fn {
         name: String,
         params: Vec<AstNode>,
-        body: Vec<AstNode>,
+        body: Box<AstNode>,
     },
     Const {
         name: String,
@@ -35,7 +42,7 @@ pub enum AstNode {
         condition: Box<AstNode>,
         body: Box<AstNode>,
     },
-    Main(Vec<AstNode>),
+    Main(Box<AstNode>),
     Call {
         name: String,
         params: Vec<AstNode>,
@@ -44,7 +51,7 @@ pub enum AstNode {
     Array(Vec<AstNode>),
 }
 
-impl AstNode {
+impl AstNodeType {
     pub fn declaration(keyword: Keyword, name: String, value: AstNode) -> Self {
         match keyword {
             Keyword::Const => Self::Const {

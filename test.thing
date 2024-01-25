@@ -50,7 +50,7 @@ fn inline(a, b) {
 
     let i 0
 
-    while (< i b) {
+    while (!= i b) {
         (increment)
         set i (+ i 1)
     }
@@ -70,7 +70,7 @@ main {
     (print -3)
     (print .3)
     (print -.3)
-    (print (increment 5 3))
+    (print (inline 5 3))
 }
 
 "

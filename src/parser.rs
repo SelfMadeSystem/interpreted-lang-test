@@ -2,36 +2,36 @@ use anyhow::Result;
 use std::{iter::Peekable, vec::IntoIter};
 use thiserror::Error;
 
-use crate::ast::AstNode;
+use crate::ast::{AstNode, AstNodeType};
 use crate::lexer::Lexer;
-use crate::token::{Keyword, Token};
+use crate::token::{Keyword, Token, TokenType};
 
 #[derive(Error, Debug)]
 pub enum ParseError {
-    #[error("Unexpected token: {0:?}")]
-    UnexpectedToken(Token),
+    #[error("Unexpected token: {0:?} at {1}:{2}")]
+    UnexpectedToken(TokenType, usize, usize),
     #[error("Unexpected end of file")]
     UnexpectedEof,
 }
 
 impl ParseError {
-    pub fn new_unexpected(token: Token) -> Self {
-        match token {
-            Token::Eof => Self::UnexpectedEof,
-            _ => Self::UnexpectedToken(token),
+    pub fn new_unexpected(token: &Token) -> Self {
+        match token.ty {
+            TokenType::Eof => Self::UnexpectedEof,
+            _ => Self::UnexpectedToken(token.ty.to_owned(), token.line, token.col),
         }
     }
 
     pub fn new_opt_ref(token: Option<&Token>) -> Self {
         match token {
-            Some(token) => Self::new_unexpected(token.to_owned()),
+            Some(token) => Self::new_unexpected(token),
             None => Self::UnexpectedEof,
         }
     }
 
     pub fn new_opt(token: Option<Token>) -> Self {
         match token {
-            Some(token) => Self::new_unexpected(token.to_owned()),
+            Some(token) => Self::new_unexpected(&token),
             None => Self::UnexpectedEof,
         }
     }
@@ -49,12 +49,12 @@ impl Parser {
         })
     }
 
-    fn expect(&mut self, expected: Token) -> Result<()> {
+    fn expect(&mut self, expected: TokenType) -> Result<(usize, usize)> {
         if let Some(token) = self.tokens.next() {
-            if token == expected {
-                Ok(())
+            if token.ty == expected {
+                Ok((token.line, token.col))
             } else {
-                Err(ParseError::new_unexpected(token).into())
+                Err(ParseError::new_unexpected(&token).into())
             }
         } else {
             Err(ParseError::UnexpectedEof.into())
@@ -76,84 +76,133 @@ impl Parser {
     }
 
     fn parse_top_level_ast(&mut self) -> Result<Option<AstNode>> {
-        match self.tokens.peek() {
-            Some(Token::String(s)) => {
+        let token = self.tokens.peek();
+        let Some(token) = token else {
+            return Ok(None);
+        };
+        let Token { ty, line, col } = token;
+        let line = *line;
+        let col = *col;
+        match ty {
+            TokenType::String(s) => {
                 let s = s.clone();
                 self.tokens.next();
-                Ok(Some(AstNode::String(s)))
+                Ok(Some(AstNode {
+                    ty: AstNodeType::String(s),
+                    line,
+                    col,
+                }))
             }
-            Some(Token::Keyword(k)) => match k {
+            TokenType::Keyword(k) => match k {
                 Keyword::Fn => self.parse_fn(true),
                 Keyword::Const => self.parse_declaration(Keyword::Const),
                 Keyword::Let => self.parse_declaration(Keyword::Let),
                 Keyword::Main => self.parse_main(),
-                _ => Err(ParseError::UnexpectedToken(Token::Keyword(k.clone())).into()),
+                _ => Err(ParseError::new_unexpected(token).into()),
             },
-            Some(Token::LParen) => self.parse_call(),
-            Some(Token::Eof) => Ok(None),
-            None => Ok(None),
-            t => Err(ParseError::UnexpectedToken(t.cloned().unwrap()).into()),
+            TokenType::LParen => self.parse_call(),
+            TokenType::Eof => Ok(None),
+            _ => Err(ParseError::new_unexpected(token).into()),
         }
     }
 
     fn parse_ast_node(&mut self) -> Result<Option<AstNode>> {
-        match self.tokens.peek() {
-            Some(Token::String(s)) => {
+        let token = self.tokens.peek();
+        let Some(token) = token else {
+            return Ok(None);
+        };
+        let Token { ty, line, col } = token;
+        let line = *line;
+        let col = *col;
+        match ty {
+            TokenType::String(s) => {
                 let s = s.clone();
                 self.tokens.next();
-                Ok(Some(AstNode::String(s)))
+                Ok(Some(AstNode {
+                    ty: AstNodeType::String(s),
+                    line,
+                    col,
+                }))
             }
-            Some(Token::Int(i)) => {
+            TokenType::Int(i) => {
                 let i = *i;
                 self.tokens.next();
-                Ok(Some(AstNode::Int(i)))
+                Ok(Some(AstNode {
+                    ty: AstNodeType::Int(i),
+                    line,
+                    col,
+                }))
             }
-            Some(Token::Float(f)) => {
+            TokenType::Float(f) => {
                 let f = *f;
                 self.tokens.next();
-                Ok(Some(AstNode::Float(f)))
+                Ok(Some(AstNode {
+                    ty: AstNodeType::Float(f),
+                    line,
+                    col,
+                }))
             }
-            Some(Token::Comma) => {
+            TokenType::Comma => {
                 // comma is ignored
                 self.tokens.next();
                 self.parse_ast_node()
             }
-            Some(Token::Keyword(Keyword::Const)) => self.parse_declaration(Keyword::Const),
-            Some(Token::Keyword(Keyword::Let)) => self.parse_declaration(Keyword::Let),
-            Some(Token::Keyword(Keyword::Set)) => self.parse_declaration(Keyword::Set),
-            Some(Token::Keyword(Keyword::If)) => self.parse_if(),
-            Some(Token::Keyword(Keyword::While)) => self.parse_while(),
-            Some(Token::Keyword(Keyword::True)) => {
+            TokenType::Keyword(Keyword::Const) => self.parse_declaration(Keyword::Const),
+            TokenType::Keyword(Keyword::Let) => self.parse_declaration(Keyword::Let),
+            TokenType::Keyword(Keyword::Set) => self.parse_declaration(Keyword::Set),
+            TokenType::Keyword(Keyword::If) => self.parse_if(),
+            TokenType::Keyword(Keyword::While) => self.parse_while(),
+            TokenType::Keyword(Keyword::Fn) => self.parse_fn(false),
+            TokenType::Keyword(Keyword::True) => {
                 self.tokens.next();
-                Ok(Some(AstNode::Bool(true)))
+                Ok(Some(AstNode {
+                    ty: AstNodeType::Bool(true),
+                    line,
+                    col,
+                }))
             }
-            Some(Token::Keyword(Keyword::False)) => {
+            TokenType::Keyword(Keyword::False) => {
                 self.tokens.next();
-                Ok(Some(AstNode::Bool(false)))
+                Ok(Some(AstNode {
+                    ty: AstNodeType::Bool(false),
+                    line,
+                    col,
+                }))
             }
-            Some(Token::Keyword(k)) => {
+            TokenType::Keyword(k) => {
                 let k = k.clone();
                 self.tokens.next();
-                Ok(Some(AstNode::Keyword(k)))
+                Ok(Some(AstNode {
+                    ty: AstNodeType::Keyword(k),
+                    line,
+                    col,
+                }))
             }
-            Some(Token::Ident(i)) => {
+            TokenType::Ident(i) => {
                 let i = i.clone();
                 self.tokens.next();
-                Ok(Some(AstNode::Ident(i)))
+                Ok(Some(AstNode {
+                    ty: AstNodeType::Ident(i),
+                    line,
+                    col,
+                }))
             }
-            Some(Token::LParen) => self.parse_call(),
-            Some(Token::LBrace) => self.parse_block(),
-            Some(Token::LBracket) => self.parse_array(),
-            Some(Token::Eof) => Ok(None),
-            t => Err(ParseError::UnexpectedToken(t.cloned().unwrap()).into()),
+            TokenType::LParen => self.parse_call(),
+            TokenType::LBrace => self.parse_block(),
+            TokenType::LBracket => self.parse_array(),
+            TokenType::Eof => Ok(None),
+            _ => Err(ParseError::new_unexpected(token).into()),
         }
     }
 
     fn parse_call(&mut self) -> Result<Option<AstNode>> {
-        self.expect(Token::LParen)?;
+        let (line, col) = self.expect(TokenType::LParen)?;
 
         let name = match self.tokens.peek() {
-            Some(Token::Ident(i)) => {
+            Some(Token {
+                ty: TokenType::Ident(i),
+                ..
+            }) => {
                 let i = i.to_owned();
                 self.tokens.next();
                 i
@@ -165,8 +214,14 @@ impl Parser {
 
         loop {
             match self.tokens.peek() {
-                Some(Token::RParen) => break,
-                Some(Token::Comma) => {
+                Some(Token {
+                    ty: TokenType::RParen,
+                    ..
+                }) => break,
+                Some(Token {
+                    ty: TokenType::Comma,
+                    ..
+                }) => {
                     self.tokens.next();
                 }
                 Some(_) => params.push(self.parse_ast_node()?.ok_or(ParseError::UnexpectedEof)?),
@@ -174,18 +229,26 @@ impl Parser {
             }
         }
 
-        self.expect(Token::RParen)?;
+        self.expect(TokenType::RParen)?;
 
-        Ok(Some(AstNode::Call { name, params }))
+        Ok(Some(AstNode {
+            ty: AstNodeType::Call { name, params },
+            line,
+            col,
+        }))
     }
 
     fn parse_block(&mut self) -> Result<Option<AstNode>> {
-        self.expect(Token::LBrace)?;
+        let (line, col) = self.expect(TokenType::LBrace)?;
 
         let mut nodes = Vec::new();
 
         loop {
-            if let Some(Token::RBrace) = self.tokens.peek() {
+            if let Some(Token {
+                ty: TokenType::RBrace,
+                ..
+            }) = self.tokens.peek()
+            {
                 break;
             }
 
@@ -196,18 +259,26 @@ impl Parser {
             }
         }
 
-        self.expect(Token::RBrace)?;
+        self.expect(TokenType::RBrace)?;
 
-        Ok(Some(AstNode::Block(nodes)))
+        Ok(Some(AstNode {
+            ty: AstNodeType::Block(nodes),
+            line,
+            col,
+        }))
     }
 
     fn parse_array(&mut self) -> Result<Option<AstNode>> {
-        self.expect(Token::LBracket)?;
+        let (line, col) = self.expect(TokenType::LBracket)?;
 
         let mut nodes = Vec::new();
 
         loop {
-            if let Some(Token::RBracket) = self.tokens.peek() {
+            if let Some(Token {
+                ty: TokenType::RBracket,
+                ..
+            }) = self.tokens.peek()
+            {
                 break;
             }
 
@@ -218,23 +289,30 @@ impl Parser {
             }
         }
 
-        self.expect(Token::RBracket)?;
+        self.expect(TokenType::RBracket)?;
 
-        Ok(Some(AstNode::Array(nodes)))
+        Ok(Some(AstNode {
+            ty: AstNodeType::Array(nodes),
+            line,
+            col,
+        }))
     }
 
     fn parse_fn(&mut self, top_level: bool) -> Result<Option<AstNode>> {
-        self.expect(Token::Keyword(Keyword::Fn))?;
+        let (line, col) = self.expect(TokenType::Keyword(Keyword::Fn))?;
 
         let name = match self.tokens.peek() {
-            Some(Token::Ident(i)) => {
+            Some(Token {
+                ty: TokenType::Ident(i),
+                ..
+            }) => {
                 let s = i.to_owned();
                 self.tokens.next();
                 s
             }
             Some(t) => {
                 if top_level {
-                    return Err(ParseError::new_unexpected(t.to_owned()).into());
+                    return Err(ParseError::new_unexpected(t).into());
                 } else {
                     "Anonymous Function".to_owned()
                 }
@@ -245,95 +323,135 @@ impl Parser {
         let mut params = Vec::new();
 
         match self.tokens.peek() {
-            Some(Token::LParen) => {
+            Some(Token {
+                ty: TokenType::LParen,
+                ..
+            }) => {
                 self.tokens.next();
                 loop {
-                    if let Some(Token::RParen) = self.tokens.peek() {
+                    if let Some(Token {
+                        ty: TokenType::RParen,
+                        ..
+                    }) = self.tokens.peek()
+                    {
                         break;
                     }
 
                     match self.tokens.next() {
-                        Some(Token::Comma) => {}
-                        Some(Token::Ident(i)) => {
-                            params.push(AstNode::Ident(i));
+                        Some(Token {
+                            ty: TokenType::Comma,
+                            ..
+                        }) => {}
+                        Some(Token {
+                            ty: TokenType::Ident(i),
+                            ..
+                        }) => {
+                            params.push(AstNode {
+                                ty: AstNodeType::Ident(i.to_owned()),
+                                line: 0,
+                                col: 0,
+                            });
                         }
                         t => return Err(ParseError::new_opt(t).into()),
                     }
                 }
-                self.expect(Token::RParen)?;
+                self.expect(TokenType::RParen)?;
             }
-            Some(Token::LBrace) => {}
+            Some(Token {
+                ty: TokenType::LBrace,
+                ..
+            }) => {}
             t => return Err(ParseError::new_opt_ref(t).into()),
         }
 
-        let body = self.parse_block()?.ok_or(ParseError::UnexpectedEof)?;
+        let body = self.parse_ast_node()?.ok_or(ParseError::UnexpectedEof)?;
 
-        Ok(Some(AstNode::Fn {
-            name,
-            params,
-            body: match body {
-                AstNode::Block(nodes) => nodes,
-                _ => unreachable!(),
+        Ok(Some(AstNode {
+            ty: AstNodeType::Fn {
+                name,
+                params,
+                body: Box::new(body),
             },
+            line,
+            col,
         }))
     }
 
     fn parse_declaration(&mut self, keyword: Keyword) -> Result<Option<AstNode>> {
-        self.expect(Token::Keyword(keyword))?;
+        let (line, col) = self.expect(TokenType::Keyword(keyword))?;
 
         let name = match self.tokens.next() {
-            Some(Token::Ident(i)) => i,
+            Some(Token {
+                ty: TokenType::Ident(i),
+                ..
+            }) => i,
             t => return Err(ParseError::new_opt(t).into()),
         };
 
         let value = self.parse_ast_node()?.ok_or(ParseError::UnexpectedEof)?;
 
-        Ok(Some(AstNode::declaration(keyword, name, value)))
+        Ok(Some(AstNode {
+            ty: AstNodeType::declaration(keyword, name, value),
+            line,
+            col,
+        }))
     }
 
     fn parse_main(&mut self) -> Result<Option<AstNode>> {
-        self.expect(Token::Keyword(Keyword::Main))?;
+        let (line, col) = self.expect(TokenType::Keyword(Keyword::Main))?;
 
         let body = self.parse_block()?.ok_or(ParseError::UnexpectedEof)?;
 
-        Ok(Some(AstNode::Main(match body {
-            AstNode::Block(nodes) => nodes,
-            _ => unreachable!(),
-        })))
+        Ok(Some(AstNode {
+            ty: AstNodeType::Main(Box::new(body)),
+            line,
+            col,
+        }))
     }
 
     fn parse_if(&mut self) -> Result<Option<AstNode>> {
-        self.expect(Token::Keyword(Keyword::If))?;
+        let (line, col) = self.expect(TokenType::Keyword(Keyword::If))?;
 
         let condition = self.parse_ast_node()?.ok_or(ParseError::UnexpectedEof)?;
 
         let body = self.parse_ast_node()?.ok_or(ParseError::UnexpectedEof)?;
 
         let else_body = match self.tokens.peek() {
-            Some(Token::Keyword(Keyword::Else)) => {
+            Some(Token {
+                ty: TokenType::Keyword(Keyword::Else),
+                ..
+            }) => {
                 self.tokens.next();
                 Some(self.parse_ast_node()?.ok_or(ParseError::UnexpectedEof)?)
             }
             _ => None,
         };
 
-        Ok(Some(AstNode::If {
-            condition: Box::new(condition),
-            body: Box::new(body),
-            else_body: else_body.map(Box::new),
+        Ok(Some(AstNode {
+            ty: AstNodeType::If {
+                condition: Box::new(condition),
+                body: Box::new(body),
+                else_body: else_body.map(Box::new),
+            },
+            line,
+            col,
         }))
     }
 
     fn parse_while(&mut self) -> Result<Option<AstNode>> {
-        self.expect(Token::Keyword(Keyword::While))?;
+        let (line, col) = self.expect(TokenType::Keyword(Keyword::While))?;
 
         let condition = self.parse_ast_node()?.ok_or(ParseError::UnexpectedEof)?;
 
         let body = self.parse_ast_node()?.ok_or(ParseError::UnexpectedEof)?;
 
-        Ok(Some(AstNode::While {
-            condition: Box::new(condition),
-            body: Box::new(body),
+        Ok(Some(AstNode {
+            ty: AstNodeType::While {
+                condition: Box::new(condition),
+                body: Box::new(body),
+            },
+            line,
+            col,
         }))
     }
 }

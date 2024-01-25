@@ -33,7 +33,14 @@ impl TryFrom<&str> for Keyword {
 }
 
 #[derive(Debug, PartialEq, Clone)]
-pub enum Token {
+pub struct Token {
+    pub ty: TokenType,
+    pub line: usize,
+    pub col: usize,
+}
+
+#[derive(Debug, PartialEq, Clone)]
+pub enum TokenType {
     Eof,
 
     // Keywords
@@ -56,7 +63,7 @@ pub enum Token {
     RBracket,
 }
 
-impl Token {
+impl TokenType {
     pub fn new_ident(ident: &str) -> Self {
         ident.try_into()
             .map(Self::Keyword)

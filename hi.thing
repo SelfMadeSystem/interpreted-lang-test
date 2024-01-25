@@ -1,14 +1,19 @@
 "Testing inline functions."
-fn inline(a) {
+fn inline(a, b) {
     fn increment() {
         set a (+ a 1)
     }
 
-    (increment)
+    let i 0
+
+    while (!= i b) {
+        (increment)
+        set i (+ i 1)
+    }
 
     a
 }
 
 main {
-    (print (inline 1))
+    (print (inline 3 5))
 }
