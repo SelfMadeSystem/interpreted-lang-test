@@ -1,0 +1,64 @@
+// use the `@fn` macro to define a function.
+// the first argument is the function name, the second is the argument list, the
+// third is the return type, and the fourth is the function body.
+// You can call a function or macro by wrapping it in parentheses. Macros are
+// always prefixed with an `@` symbol.
+// Types are prefixed with a `$` symbol.
+(@fn greet [name: $string] $string
+  // You can use the `concat` function to concatenate strings.
+  (concat "Hello, " name "!"))
+
+// You can use the `@if` macro to define an if statement.
+// Function names can can include any character except for whitespace and the
+// following: `()[]{}@,;'"/\.` and must not start with a digit. If the function
+// name starts with a `-` symbol, the following character must not be a digit.
+// (e.g. `-1` is not a valid function name, but `-a` and `-` are)
+(@fn fib [n: $int] $int
+  (@if (<= n 1)
+    n
+    (add (fib (- n 1)) (fib (- n 2)))))
+
+// You can use the `$void` type to indicate that a function does not return
+// anything.
+(@fn no_return [] $void
+  (print "This function does not return anything."))
+
+// You can define a constant using the `@const` macro.
+// Constants are immutable.
+(@const PI $float 3.14159265)
+
+// You can add generics to functions and types. Generics are prefixed with a
+// `#` symbol and can be passed to generic types (such as the `$list` type) and
+// functions.
+(@fn add [a: #T, b: #T] #T
+  (+ a b))
+(@fn sum [list: $list[$int]] $int
+  (@if (== (len list) 0)
+    0
+    (add (head list) (sum (tail list)))))
+
+// You can use the `@macro` macro to define a macro.
+// The first argument is the macro name, the second is the argument list which
+// is always the scope and a list of AST nodes, the third is the return type,
+// and the fourth is the macro body. If the return type is `$ast`, the macro
+// will return the AST node as-is. Otherwise, the macro will return the result
+// of evaluating the AST node.
+//
+// You can use the `eval` function to evaluate an AST node in a given scope.
+//
+// The following is an example of how the `@assert` macro is implemented.
+//
+// Note: the actual implementation of the `@assert` macro is slightly different
+// because it can handle multiple arguments.
+(@macro assert [scope: $scope, args: $list[$ast]] $ast
+  (@if (== (len args) 1)
+    (@if (eval scope (head args))
+      (print "Assertion passed.")
+      (print "Assertion failed."))
+    (print "Assertion failed.")))
+
+// You can use the `@main` macro to define the entry point of your program.
+(@main
+  (print (greet "World"))
+  (@assert (= (fib 10) 55))
+  (no_return))
