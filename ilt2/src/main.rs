@@ -1,13 +1,10 @@
-use default_fns::native_functions;
-use default_fns::native_macros;
+use default_fns::{native_functions, native_macros};
 use interpreter::interpret;
 use lexer::Lexer;
 use parser::Parser;
 use std::env;
 use std::fs;
 use std::io::{self, Read};
-// use crate::default_fns::default_native_functions;
-// use crate::{interpreter::interpret, parser::Parser};
 
 mod ast;
 mod default_fns;

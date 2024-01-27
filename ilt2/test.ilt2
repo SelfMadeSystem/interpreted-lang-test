@@ -1,14 +1,4 @@
-(@fn greet [name: $string]
-  (concat "Hello, " name "!"))
-(@fn greet2 [name1: $string, name2: $string]
-  (concat "Hello, " name1 " and " name2 "!"))
-(@fn any_return_type [b: $bool]: $any
-  (@ifelse b 1 "Hello"))
+(@fn identity[$T] [value: $T]: $T value)
 
 (@main
-  (print (any_return_type true))
-  (print (any_return_type false))
-  (print (greet "World"))
-  (print (greet2 "World" "Universe"))
-  (print (@call greet2 ["World" "Universe"]))
-  (print (matches $number 0.1)))
+  (identity[$int] 2))

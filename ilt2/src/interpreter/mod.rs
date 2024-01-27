@@ -22,18 +22,14 @@ pub enum InterpreterError {
     CannotSetConstValue(String, usize, usize),
     #[error("Multiple main functions found. First at {0}:{1}, second at {2}:{3}")]
     MultipleMainFunctions(usize, usize, usize, usize),
+    #[error("Invalid main function.")]
+    InvalidMainFunction,
     #[error("No main function found")]
     NoMainFunction,
-    #[error("Main in inner scope. Found at {0}:{1}")]
-    MainInInnerScope(usize, usize),
     #[error("Invalid function call for {0}")]
     InvalidFunctionCall(String),
     #[error("Invalid macro call for {0}")]
     InvalidMacroCall(String),
-    #[error("Invalid types ${0} for {1}")]
-    InvalidType1Native(String, String),
-    #[error("Invalid types ${0} and ${1} for {2}")]
-    InvalidType2Native(String, String, String),
     #[error("Invalid type ${0} at argument {1} for {2}. Expected type: ${3}")]
     InvalidTypeArgNative(String, usize, String, String),
     #[error("Invalid return type ${0} for {1}. Expected type: ${2}")]
@@ -68,13 +64,16 @@ impl Interpreter {
             let AstNodeType::Call { name, params: _ } = &node.ty else {
                 continue;
             };
-            if let TokenIdent::Macro(s) = name {
+            if let TokenIdent::Macro(s, generics) = name {
                 if s == "main" {
                     if let Some(main) = &self.main {
                         return Err(InterpreterError::MultipleMainFunctions(
                             main.line, main.col, node.line, node.col,
                         )
                         .into());
+                    }
+                    if let Some(_) = generics {
+                        return Err(InterpreterError::InvalidMainFunction.into());
                     }
                     self.main = Some(node.clone());
                     continue;
@@ -89,7 +88,7 @@ impl Interpreter {
         if let Some(main) = self.main.clone() {
             match main.ty {
                 AstNodeType::Call { name, params } => {
-                    if let TokenIdent::Macro(s) = name {
+                    if let TokenIdent::Macro(s, _) = name {
                         if s == "main" {
                             return Ok(params);
                         }
@@ -206,7 +205,7 @@ impl InterpreterScope {
                 Ok(Rc::new(InterpreterValue::Array(array)))
             }
             AstNodeType::Call { name, params } => {
-                let function = self.get(name, node.line, node.col);
+                let function = self.get(&name.without_generics(), node.line, node.col);
                 let function = match function {
                     Ok(function) => function,
                     Err(_) => {
@@ -224,11 +223,7 @@ impl InterpreterScope {
                         let params = self.evaluate_each(params)?;
                         self.call_function(name, function, params, node.line, node.col)
                     }
-                    InterpreterValue::Macro {
-                        name,
-                        params: fn_params,
-                        body,
-                    } => todo!(),
+                    InterpreterValue::Macro { .. } => todo!(),
                     InterpreterValue::NativeMacro { body, .. } => {
                         body(self, params, node.line, node.col)
                     }
@@ -257,9 +252,12 @@ impl InterpreterScope {
         line: usize,
         col: usize,
     ) -> Result<Rc<InterpreterValue>> {
+        let generics = name.get_generics();
+
         match func.as_ref() {
             InterpreterValue::Function {
                 name,
+                generics: fn_generics,
                 params: fn_params,
                 return_type,
                 body,
@@ -267,9 +265,50 @@ impl InterpreterScope {
                 if params.len() != fn_params.len() {
                     return Err(InterpreterError::InvalidFunctionCall(name.to_owned()).into());
                 }
+                if generics.is_some() != fn_generics.is_some() {
+                    return Err(InterpreterError::InvalidFunctionCall(name.to_owned()).into());
+                }
                 let mut scope = self.new_child();
+                if let Some(generics) = generics {
+                    if generics.len() != fn_generics.as_ref().unwrap().len() {
+                        return Err(InterpreterError::InvalidFunctionCall(name.to_owned()).into());
+                    }
+
+                    for (generic, value) in fn_generics.as_ref().unwrap().iter().zip(generics) {
+                        scope.set_const(
+                            &TokenIdent::Type(generic.to_string(), None),
+                            scope.get(&value.ident, line, col)?,
+                            line,
+                            col,
+                        )?;
+                    }
+                }
+                let return_type = if let InterpreterType::ToGet(ref ident) = return_type {
+                    match scope.get(&ident.without_generics(), line, col)?.as_ref() {
+                        InterpreterValue::Type(t) => t.clone(),
+                        _ => {
+                            return Err(
+                                InterpreterError::InvalidFunctionCall(name.to_owned()).into()
+                            )
+                        }
+                    }
+                } else {
+                    return_type.clone()
+                };
                 for ((param, param_type), value) in fn_params.iter().zip(params.iter()) {
-                    if !value.check_type(param_type) {
+                    let param_type = if let InterpreterType::ToGet(ref ident) = param_type {
+                        match scope.get(&ident.without_generics(), line, col)?.as_ref() {
+                            InterpreterValue::Type(t) => t.clone(),
+                            _ => {
+                                return Err(
+                                    InterpreterError::InvalidFunctionCall(name.to_owned()).into()
+                                )
+                            }
+                        }
+                    } else {
+                        param_type.clone()
+                    };
+                    if !value.check_type(&param_type) {
                         return Err(InterpreterError::InvalidTypeArgNative(
                             value.get_type().to_string(),
                             0,
@@ -279,14 +318,14 @@ impl InterpreterScope {
                         .into());
                     }
                     scope.set(
-                        &TokenIdent::Ident(param.to_owned()),
+                        &TokenIdent::Ident(param.to_owned(), None),
                         value.clone(),
                         line,
                         col,
                     )?;
                 }
                 let ret = scope.evaluate_block(&body)?;
-                if !ret.check_type(return_type) {
+                if !ret.check_type(&return_type) {
                     return Err(InterpreterError::InvalidReturnType(
                         ret.get_type().to_string(),
                         name.to_string(),
@@ -331,7 +370,7 @@ pub fn interpret(
 
     for t in types::all_types() {
         interpreter.top_scope.set_const(
-            &TokenIdent::Type(t.to_string()),
+            &TokenIdent::Type(t.to_string(), None),
             Rc::new(InterpreterValue::Type(t)),
             0,
             0,
@@ -340,7 +379,7 @@ pub fn interpret(
 
     for (name, function) in functions {
         interpreter.top_scope.set_const(
-            &TokenIdent::Ident(name.to_owned()),
+            &TokenIdent::Ident(name.to_owned(), None),
             Rc::new(InterpreterValue::NativeFunction {
                 name: name.clone(),
                 body: function,
@@ -352,7 +391,7 @@ pub fn interpret(
 
     for (name, function) in macros {
         interpreter.top_scope.set_const(
-            &TokenIdent::Macro(name.to_owned()),
+            &TokenIdent::Macro(name.to_owned(), None),
             Rc::new(InterpreterValue::NativeMacro {
                 name: name.clone(),
                 body: function,

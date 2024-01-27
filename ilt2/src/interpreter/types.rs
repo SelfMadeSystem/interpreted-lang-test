@@ -1,4 +1,14 @@
+use crate::token::TokenIdent;
+
 use super::InterpreterValue;
+use anyhow::Result;
+use thiserror::Error;
+
+#[derive(Debug, Error)]
+pub enum InterpreterTypeError {
+    #[error("Invalid generic type parameters count. Expected {0} got {1}")]
+    InvalidGenerics(usize, usize),
+}
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
 pub enum InterpreterType {
@@ -8,12 +18,12 @@ pub enum InterpreterType {
     Float,
     String,
     Bool,
-    Array,
-    TypedArray(Box<InterpreterType>),
+    Array(Option<Box<InterpreterType>>),
     Type,
     Void,
     Function,
     Macro,
+    ToGet(TokenIdent),
 }
 
 impl InterpreterType {
@@ -25,35 +35,55 @@ impl InterpreterType {
             Self::Float => "float".to_string(),
             Self::String => "string".to_string(),
             Self::Bool => "bool".to_string(),
-            Self::Array => "array".to_string(),
-            Self::TypedArray(ty) => format!("array[{}]", ty.to_string()),
+            Self::Array(t) => match t {
+                Some(t) => format!("array[{}]", t.to_string()),
+                _ => "array".to_string(),
+            },
             Self::Type => "type".to_string(),
             Self::Void => "void".to_string(),
             Self::Function => "function".to_string(),
             Self::Macro => "macro".to_string(),
+            Self::ToGet(ident) => format!("toget[{}]", ident.to_string()),
+        }
+    }
+
+    pub fn with_generics(&self, generics: Vec<InterpreterType>) -> Result<InterpreterType> {
+        match self {
+            Self::Array(_) => {
+                if generics.len() != 1 {
+                    return Err(InterpreterTypeError::InvalidGenerics(1, generics.len()).into());
+                }
+                Ok(Self::Array(Some(Box::new(
+                    generics.first().unwrap().clone(),
+                ))))
+            }
+            _ => Err(InterpreterTypeError::InvalidGenerics(0, generics.len()).into()),
         }
     }
 
     pub fn validate(&self, val: &InterpreterValue) -> bool {
-        match self  {
+        match self {
             InterpreterType::Any => true,
             InterpreterType::Number => val.is_number(),
             InterpreterType::Int => matches!(val, InterpreterValue::Int(_)),
             InterpreterType::Float => matches!(val, InterpreterValue::Float(_)),
             InterpreterType::String => matches!(val, InterpreterValue::String(_)),
             InterpreterType::Bool => matches!(val, InterpreterValue::Bool(_)),
-            InterpreterType::Array => matches!(val, InterpreterValue::Array(_)),
-            InterpreterType::TypedArray(t) => {
-                if let InterpreterValue::Array(arr) = val {
-                    arr.iter().all(|v| t.validate(v))
-                } else {
-                    false
-                }
+            InterpreterType::Array(t) => match val {
+                InterpreterValue::Array(arr) => match t {
+                    Some(t) => arr.iter().all(|v| t.validate(v)),
+                    _ => true,
+                },
+                _ => false,
             },
             InterpreterType::Type => matches!(val, InterpreterValue::Type(_)),
             InterpreterType::Void => matches!(val, InterpreterValue::Void),
             InterpreterType::Function => val.is_function(),
             InterpreterType::Macro => val.is_macro(),
+            InterpreterType::ToGet(ident) => {
+                eprintln!("toget: {}", ident.to_string());
+                false
+            }
         }
     }
 }
@@ -66,7 +96,7 @@ pub fn all_types() -> Vec<InterpreterType> {
         InterpreterType::Float,
         InterpreterType::String,
         InterpreterType::Bool,
-        InterpreterType::Array,
+        InterpreterType::Array(None),
         InterpreterType::Type,
         InterpreterType::Void,
         InterpreterType::Function,

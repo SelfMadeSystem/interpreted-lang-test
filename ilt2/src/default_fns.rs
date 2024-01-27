@@ -61,26 +61,30 @@ pub fn native_macros() -> HashMap<String, NativeMacro> {
         }
 
         let name = match &args[0].ty {
-            AstNodeType::Ident(t) if matches!(t, TokenIdent::Ident(_)) => t,
+            AstNodeType::Ident(t) if matches!(t, TokenIdent::Ident(..)) => t,
             _ => return Err(InterpreterError::InvalidMacroCall("fn".to_owned()).into()),
         };
 
         let mut params = Vec::new();
 
-        match &args[1].ty {
-            AstNodeType::Array(params_) => {
-                let mut iter = params_.into_iter().peekable();
-                while let Some(param) = iter.next() {
-                    match &param.ty {
-                        AstNodeType::Ident(TokenIdent::Ident(s)) => params.push((
-                            s.to_owned(),
-                            match iter.peek() {
-                                Some(AstNode {
-                                    ty: AstNodeType::Ident(t),
-                                    line,
-                                    col,
-                                }) if matches!(t, TokenIdent::Type(_)) => {
-                                    match scope.get(t, *line, *col)?.as_ref() {
+        let AstNodeType::Array(params_) = &args[1].ty else {
+            return Err(InterpreterError::InvalidMacroCall("fn".to_owned()).into());
+        };
+
+        let mut iter = params_.into_iter().peekable();
+        while let Some(param) = iter.next() {
+            match &param.ty {
+                AstNodeType::Ident(TokenIdent::Ident(s, None)) => params.push((
+                    s.to_owned(),
+                    match iter.peek() {
+                        Some(AstNode {
+                            ty: AstNodeType::Ident(t),
+                            line,
+                            col,
+                        }) => {
+                            if let TokenIdent::Type(..) = t {
+                                match scope.get(t, *line, *col) {
+                                    Ok(rc) => match rc.as_ref() {
                                         InterpreterValue::Type(t) => {
                                             iter.next();
                                             t.clone()
@@ -91,24 +95,43 @@ pub fn native_macros() -> HashMap<String, NativeMacro> {
                                             )
                                             .into())
                                         }
+                                    },
+                                    Err(_) => {
+                                        iter.next();
+                                        InterpreterType::ToGet(t.clone())
                                     }
                                 }
-                                _ => InterpreterType::Any,
-                            },
-                        )),
-                        _ => return Err(InterpreterError::InvalidMacroCall("fn".to_owned()).into()),
-                    }
-                }
+                            } else {
+                                InterpreterType::Any
+                            }
+                        }
+                        _ => InterpreterType::Any,
+                    },
+                )),
+                _ => return Err(InterpreterError::InvalidMacroCall("fn".to_owned()).into()),
             }
-            _ => return Err(InterpreterError::InvalidMacroCall("fn".to_owned()).into()),
         }
 
         let (return_type, has) = match &args[2].ty {
-            AstNodeType::Ident(t) if matches!(t, TokenIdent::Type(_)) => {
-                match scope.get(t, line, col)?.as_ref() {
-                    InterpreterValue::Type(t) => (t.clone(), true),
-                    _ => return Err(InterpreterError::InvalidMacroCall("fn".to_owned()).into()),
-                }
+            AstNodeType::Ident(t) if matches!(t, TokenIdent::Type(..)) => {
+                (match scope.get(t, line, col) {
+                    Ok(rc) => match rc.as_ref() {
+                        InterpreterValue::Type(t) => {
+                            iter.next();
+                            t.clone()
+                        }
+                        _ => {
+                            return Err(InterpreterError::InvalidMacroCall(
+                                "fn".to_owned(),
+                            )
+                            .into())
+                        }
+                    },
+                    Err(_) => {
+                        iter.next();
+                        InterpreterType::ToGet(t.clone())
+                    }
+                }, true)
             }
             _ => (InterpreterType::Any, false),
         };
@@ -116,63 +139,17 @@ pub fn native_macros() -> HashMap<String, NativeMacro> {
         let body = args[if has { 3 } else { 2 }..].to_vec();
 
         let func = Rc::new(InterpreterValue::Function {
-            name: name.to_string(),
+            name: name.name().to_owned(),
+            generics: name
+                .get_generics()
+                .map(|v| v.iter().map(|v| v.ident.name().to_owned()).collect()),
             params,
             return_type,
             body,
         });
 
         if scope.top_scope {
-            scope.set_const(name, func.clone(), line, col)?;
-
-            Ok(Rc::new(InterpreterValue::Void))
-        } else {
-            Ok(func)
-        }
-    });
-
-    macros.insert("macro".to_string(), |scope, args, line, col| {
-        if args.len() < 2 {
-            return Err(InterpreterError::InvalidMacroCall("macro".to_owned()).into());
-        }
-
-        let name = match &args[0].ty {
-            AstNodeType::Ident(t) if matches!(t, TokenIdent::Ident(_)) => t,
-            _ => return Err(InterpreterError::InvalidMacroCall("macro".to_owned()).into()),
-        };
-
-        let mut params = Vec::new();
-
-        match &args[1].ty {
-            AstNodeType::Array(params_) => {
-                for param in params_ {
-                    match &param.ty {
-                        AstNodeType::Ident(TokenIdent::Ident(s)) => params.push(s.to_owned()),
-                        _ => {
-                            return Err(
-                                InterpreterError::InvalidMacroCall("macro".to_owned()).into()
-                            )
-                        }
-                    }
-                }
-            }
-            _ => return Err(InterpreterError::InvalidMacroCall("macro".to_owned()).into()),
-        }
-
-        if params.len() != 2 {
-            return Err(InterpreterError::InvalidMacroCall("macro".to_owned()).into());
-        }
-
-        let body = args[2..].to_vec();
-
-        let func = Rc::new(InterpreterValue::Macro {
-            name: name.to_string(),
-            params,
-            body,
-        });
-
-        if scope.top_scope {
-            scope.set_const(name, func.clone(), line, col)?;
+            scope.set_const(&name.without_generics(), func.clone(), line, col)?;
 
             Ok(Rc::new(InterpreterValue::Void))
         } else {
@@ -218,11 +195,7 @@ pub fn native_macros() -> HashMap<String, NativeMacro> {
             _ => return Err(InterpreterError::InvalidMacroCall("ifelse".to_owned()).into()),
         };
 
-        let body = if condition {
-            &args[1]
-        } else {
-            &args[2]
-        };
+        let body = if condition { &args[1] } else { &args[2] };
 
         scope.evaluate(body)
     });

@@ -51,9 +51,12 @@ impl<'a> Lexer<'a> {
     }
 
     /// Creates a new UnexpectedChar error with the current line and column.
-    /// Assumes the current character is Some.
+    /// If the current character is None, returns an UnexpectedEOF error.
     fn unexpected_char(&self) -> LexError {
-        LexError::UnexpectedChar(self.current.unwrap(), self.line, self.col)
+        match self.current {
+            Some(c) => LexError::UnexpectedChar(c, self.line, self.col),
+            None => LexError::UnexpectedEOF,
+        }
     }
 
     /// Saves the current line and column.
@@ -257,6 +260,7 @@ impl<'a> Lexer<'a> {
     fn parse_ident(&mut self) -> Result<Token> {
         self.save();
         let mut ident = String::new();
+        let mut params = None;
         ident.push(self.current.unwrap());
 
         loop {
@@ -269,7 +273,23 @@ impl<'a> Lexer<'a> {
             }
         }
 
-        Ok(self.new_token(TokenType::new_ident(ident.as_str())))
+        if self.current_char() == Some('[') {
+            let mut p = Vec::new();
+            self.next_char();
+            loop {
+                match self.next_token() {
+                    Ok(Token {
+                        ty: TokenType::RBracket,
+                        ..
+                    }) => break,
+                    Ok(t) => p.push(t),
+                    Err(e) => return Err(e.into()),
+                }
+            }
+            params = Some(p);
+        }
+
+        Ok(self.new_token(TokenType::new_ident(ident.as_str(), params)?))
     }
 
     /// Parse all tokens from the input.

@@ -17,6 +17,7 @@ pub enum InterpreterValue {
     Void,
     Function {
         name: String,
+        generics: Option<Vec<String>>,
         params: Vec<(String, InterpreterType)>,
         return_type: InterpreterType,
         body: Vec<AstNode>,
@@ -44,7 +45,7 @@ impl InterpreterValue {
             Self::Float(_) => InterpreterType::Float,
             Self::String(_) => InterpreterType::String,
             Self::Bool(_) => InterpreterType::Bool,
-            Self::Array(_) => InterpreterType::Array,
+            Self::Array(_) => InterpreterType::Array(None),
             Self::Type(_) => InterpreterType::Type,
             Self::Void => InterpreterType::Void,
             Self::Function { .. } => InterpreterType::Function,
