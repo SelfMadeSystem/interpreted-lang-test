@@ -106,6 +106,7 @@ impl<'a> Lexer<'a> {
                 Some(c) => {
                     if c.is_whitespace() || c == '/' {
                         let mut comment = c == '/' && self.peek_char() == Some('/');
+                        let mut multiline_comment = c == '/' && self.peek_char() == Some('*');
                         loop {
                             if comment {
                                 match self.next_char() {
@@ -116,13 +117,34 @@ impl<'a> Lexer<'a> {
                                     Some(_) => continue,
                                     None => return Ok(self.new_token(TokenType::Eof)),
                                 }
+                            } else if multiline_comment {
+                                match self.next_char() {
+                                    Some('*') => {
+                                        if self.peek_char() == Some('/') {
+                                            self.next_char();
+                                            multiline_comment = false;
+                                            continue;
+                                        }
+                                    }
+                                    Some(_) => continue,
+                                    None => return Ok(self.new_token(TokenType::Eof)),
+                                }
                             }
                             match self.next_char() {
                                 Some(c) => {
                                     if !c.is_whitespace() {
-                                        if c == '/' && self.peek_char() == Some('/') {
-                                            comment = true;
-                                            continue;
+                                        if c == '/' {
+                                            match self.peek_char() {
+                                                Some('/') => {
+                                                    comment = true;
+                                                    continue;
+                                                }
+                                                Some('*') => {
+                                                    multiline_comment = true;
+                                                    continue;
+                                                }
+                                                _ => {}
+                                            }
                                         }
                                         break c;
                                     }

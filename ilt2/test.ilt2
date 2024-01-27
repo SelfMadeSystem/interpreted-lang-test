@@ -1,2 +1,1 @@
-(@main
-  (print (istype $array[$int] [2, 3, 4])))
+(@main (print (istype $array[$int] [2, 3, 4])))
