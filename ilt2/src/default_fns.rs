@@ -93,7 +93,7 @@ pub fn native_macros() -> HashMap<String, NativeMacro> {
                                         }
                                     }
                                 }
-                                _ => InterpreterType::ANY,
+                                _ => InterpreterType::Any,
                             },
                         )),
                         _ => return Err(InterpreterError::InvalidMacroCall("fn".to_owned()).into()),
@@ -110,7 +110,7 @@ pub fn native_macros() -> HashMap<String, NativeMacro> {
                     _ => return Err(InterpreterError::InvalidMacroCall("fn".to_owned()).into()),
                 }
             }
-            _ => (InterpreterType::ANY, false),
+            _ => (InterpreterType::Any, false),
         };
 
         let body = args[if has { 3 } else { 2 }..].to_vec();

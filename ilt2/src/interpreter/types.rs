@@ -1,53 +1,75 @@
-use std::collections::HashMap;
+use super::InterpreterValue;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
-pub struct InterpreterType {
-    pub name: &'static str,
-    // pub generics: Vec<InterpreterType>,
-    pub is_macro: bool,
+pub enum InterpreterType {
+    Any,
+    Number,
+    Int,
+    Float,
+    String,
+    Bool,
+    Array,
+    TypedArray(Box<InterpreterType>),
+    Type,
+    Void,
+    Function,
+    Macro,
 }
 
 impl InterpreterType {
     pub fn to_string(&self) -> String {
-        self.name.to_string()
+        match self {
+            Self::Any => "any".to_string(),
+            Self::Number => "number".to_string(),
+            Self::Int => "int".to_string(),
+            Self::Float => "float".to_string(),
+            Self::String => "string".to_string(),
+            Self::Bool => "bool".to_string(),
+            Self::Array => "array".to_string(),
+            Self::TypedArray(ty) => format!("array[{}]", ty.to_string()),
+            Self::Type => "type".to_string(),
+            Self::Void => "void".to_string(),
+            Self::Function => "function".to_string(),
+            Self::Macro => "macro".to_string(),
+        }
+    }
+
+    pub fn validate(&self, val: &InterpreterValue) -> bool {
+        match self  {
+            InterpreterType::Any => true,
+            InterpreterType::Number => val.is_number(),
+            InterpreterType::Int => matches!(val, InterpreterValue::Int(_)),
+            InterpreterType::Float => matches!(val, InterpreterValue::Float(_)),
+            InterpreterType::String => matches!(val, InterpreterValue::String(_)),
+            InterpreterType::Bool => matches!(val, InterpreterValue::Bool(_)),
+            InterpreterType::Array => matches!(val, InterpreterValue::Array(_)),
+            InterpreterType::TypedArray(t) => {
+                if let InterpreterValue::Array(arr) = val {
+                    arr.iter().all(|v| t.validate(v))
+                } else {
+                    false
+                }
+            },
+            InterpreterType::Type => matches!(val, InterpreterValue::Type(_)),
+            InterpreterType::Void => matches!(val, InterpreterValue::Void),
+            InterpreterType::Function => val.is_function(),
+            InterpreterType::Macro => val.is_macro(),
+        }
     }
 }
 
-macro_rules! define_types {
-    ($(($name:ident, $upper:ident)),* $(,)?) => {
-        impl InterpreterType {
-            $(
-                #[allow(dead_code)]
-                pub const $upper: Self = Self {
-                    name: stringify!($name),
-                    is_macro: false,
-                };
-            )*
-        }
-
-        pub fn all_types() -> HashMap<String, InterpreterType> {
-            let mut map = HashMap::new();
-            $(
-                map.insert(stringify!($name).to_string(), InterpreterType {
-                    name: stringify!($name),
-                    is_macro: false,
-                });
-            )*
-            map
-        }
-    };
-}
-
-define_types! {
-    (any, ANY),
-    (number, NUMBER),
-    (int, INT),
-    (float, FLOAT),
-    (string, STRING),
-    (bool, BOOL),
-    (array, ARRAY),
-    (type, TYPE),
-    (void, VOID),
-    (function, FUNCTION),
-    (macro, MACRO),
+pub fn all_types() -> Vec<InterpreterType> {
+    vec![
+        InterpreterType::Any,
+        InterpreterType::Number,
+        InterpreterType::Int,
+        InterpreterType::Float,
+        InterpreterType::String,
+        InterpreterType::Bool,
+        InterpreterType::Array,
+        InterpreterType::Type,
+        InterpreterType::Void,
+        InterpreterType::Function,
+        InterpreterType::Macro,
+    ]
 }

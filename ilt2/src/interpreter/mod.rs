@@ -331,8 +331,8 @@ pub fn interpret(
 
     for t in types::all_types() {
         interpreter.top_scope.set_const(
-            &TokenIdent::Type(t.0.to_owned()),
-            Rc::new(InterpreterValue::Type(t.1)),
+            &TokenIdent::Type(t.to_string()),
+            Rc::new(InterpreterValue::Type(t)),
             0,
             0,
         )?;

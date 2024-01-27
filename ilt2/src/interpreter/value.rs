@@ -40,69 +40,42 @@ pub enum InterpreterValue {
 impl InterpreterValue {
     pub fn get_type(&self) -> InterpreterType {
         match self {
-            Self::Int(_) => InterpreterType {
-                name: "int",
-                is_macro: false,
-            },
-            Self::Float(_) => InterpreterType {
-                name: "float",
-                is_macro: false,
-            },
-            Self::String(_) => InterpreterType {
-                name: "string",
-                is_macro: false,
-            },
-            Self::Bool(_) => InterpreterType {
-                name: "bool",
-                is_macro: false,
-            },
-            Self::Array(_) => InterpreterType {
-                name: "array",
-                is_macro: false,
-            },
-            Self::Type(_) => InterpreterType {
-                name: "type",
-                is_macro: false,
-            },
-            Self::Void => InterpreterType {
-                name: "void",
-                is_macro: false,
-            },
-            Self::Function { .. } => InterpreterType {
-                name: "function",
-                is_macro: false,
-            },
-            Self::NativeFunction { .. } => InterpreterType {
-                name: "function",
-                is_macro: false,
-            },
-            Self::Macro { .. } => InterpreterType {
-                name: "macro",
-                is_macro: false,
-            },
-            Self::NativeMacro { .. } => InterpreterType {
-                name: "macro",
-                is_macro: false,
-            },
+            Self::Int(_) => InterpreterType::Int,
+            Self::Float(_) => InterpreterType::Float,
+            Self::String(_) => InterpreterType::String,
+            Self::Bool(_) => InterpreterType::Bool,
+            Self::Array(_) => InterpreterType::Array,
+            Self::Type(_) => InterpreterType::Type,
+            Self::Void => InterpreterType::Void,
+            Self::Function { .. } => InterpreterType::Function,
+            Self::NativeFunction { .. } => InterpreterType::Function,
+            Self::Macro { .. } => InterpreterType::Macro,
+            Self::NativeMacro { .. } => InterpreterType::Macro,
         }
     }
 
     pub fn check_type(&self, ty: &InterpreterType) -> bool {
-        if ty.name == "any" {
-            return true;
-        }
+        ty.validate(self)
+    }
+
+    pub fn is_number(&self) -> bool {
         match self {
-            Self::Int(_) => ty.name == "int" || ty.name == "number",
-            Self::Float(_) => ty.name == "float" || ty.name == "number",
-            Self::String(_) => ty.name == "string",
-            Self::Bool(_) => ty.name == "bool",
-            Self::Array(_) => ty.name == "array",
-            Self::Type(_) => ty.name == "type",
-            Self::Void => ty.name == "void",
-            Self::Function { .. } => ty.name == "function",
-            Self::NativeFunction { .. } => ty.name == "function",
-            Self::Macro { .. } => ty.name == "macro",
-            Self::NativeMacro { .. } => ty.name == "macro",
+            Self::Int(_) | Self::Float(_) => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_function(&self) -> bool {
+        match self {
+            Self::Function { .. } | Self::NativeFunction { .. } => true,
+            _ => false,
+        }
+    }
+
+    pub fn is_macro(&self) -> bool {
+        match self {
+            Self::Macro { .. } | Self::NativeMacro { .. } => true,
+            _ => false,
         }
     }
 
@@ -126,7 +99,7 @@ impl InterpreterValue {
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
-            Self::Type(ty) => format!("${}", ty.name),
+            Self::Type(ty) => format!("${}", ty.to_string()),
             Self::Void => "Void".to_string(),
             Self::Function { name, params, .. } => {
                 format!("Function {{ name: {}, params: {:?} }}", name, params)
