@@ -201,5 +201,31 @@ pub fn native_macros() -> HashMap<String, NativeMacro> {
         Ok(scope.call_function(name, func, params, line, col)?)
     });
 
+    macros.insert("ifelse".to_string(), |scope, args, line, col| {
+        if args.len() != 3 {
+            return Err(InterpreterError::InvalidMacroCall("ifelse".to_owned()).into());
+        }
+
+        let condition = match &args[0].ty {
+            AstNodeType::Ident(s) => scope.get(s, line, col)?,
+            AstNodeType::Bool(b) => Rc::new(InterpreterValue::Bool(*b)),
+            AstNodeType::Call { .. } => scope.evaluate(&args[0])?,
+            _ => return Err(InterpreterError::InvalidMacroCall("ifelse".to_owned()).into()),
+        };
+
+        let condition = match condition.as_ref() {
+            InterpreterValue::Bool(b) => *b,
+            _ => return Err(InterpreterError::InvalidMacroCall("ifelse".to_owned()).into()),
+        };
+
+        let body = if condition {
+            &args[1]
+        } else {
+            &args[2]
+        };
+
+        scope.evaluate(body)
+    });
+
     macros
 }
