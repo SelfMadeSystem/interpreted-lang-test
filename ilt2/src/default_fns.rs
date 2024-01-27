@@ -34,6 +34,21 @@ pub fn native_functions() -> HashMap<String, NativeFn> {
         Ok(Rc::new(InterpreterValue::Type(arg.get_type())))
     });
 
+    functions.insert("matches".to_string(), |_, args, _, _| {
+        if args.len() != 2 {
+            return Err(InterpreterError::InvalidFunctionCall("matches".to_owned()).into());
+        }
+
+        let ty = match &args[0].as_ref() {
+            InterpreterValue::Type(t) => t,
+            _ => return Err(InterpreterError::InvalidFunctionCall("matches".to_owned()).into()),
+        };
+
+        let value = &args[1];
+
+        Ok(Rc::new(InterpreterValue::Bool(value.check_type(ty))))
+    });
+
     functions
 }
 

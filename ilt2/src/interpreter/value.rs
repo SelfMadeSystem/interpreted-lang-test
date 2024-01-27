@@ -86,6 +86,25 @@ impl InterpreterValue {
         }
     }
 
+    pub fn check_type(&self, ty: &InterpreterType) -> bool {
+        if ty.name == "any" {
+            return true;
+        }
+        match self {
+            Self::Int(_) => ty.name == "int" || ty.name == "number",
+            Self::Float(_) => ty.name == "float" || ty.name == "number",
+            Self::String(_) => ty.name == "string",
+            Self::Bool(_) => ty.name == "bool",
+            Self::Array(_) => ty.name == "array",
+            Self::Type(_) => ty.name == "type",
+            Self::Void => ty.name == "void",
+            Self::Function { .. } => ty.name == "function",
+            Self::NativeFunction { .. } => ty.name == "function",
+            Self::Macro { .. } => ty.name == "macro",
+            Self::NativeMacro { .. } => ty.name == "macro",
+        }
+    }
+
     pub fn to_formatted_string(&self) -> String {
         match self {
             Self::String(s) => format!("\"{}\"", s),

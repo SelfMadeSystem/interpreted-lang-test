@@ -1,10 +1,5 @@
+use super::InterpreterValue;
 use std::rc::Rc;
-
-use anyhow::Error;
-
-use crate::ast::{AstNode, AstNodeType};
-
-use super::{InterpreterError, NativeFn, NativeMacro};
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
 pub struct InterpreterType {
@@ -15,15 +10,20 @@ pub struct InterpreterType {
 
 macro_rules! ttt {
     ($name:literal) => {
-        ($name.to_string(), InterpreterType {
-            name: $name.to_string(),
-            is_macro: false,
-        })
+        (
+            $name.to_string(),
+            InterpreterType {
+                name: $name.to_string(),
+                is_macro: false,
+            },
+        )
     };
 }
 
 pub fn all_types() -> Vec<(String, InterpreterType)> {
     vec![
+        ttt!("any"),
+        ttt!("number"),
         ttt!("int"),
         ttt!("float"),
         ttt!("string"),
