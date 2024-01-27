@@ -27,7 +27,7 @@ pub enum InterpreterType {
 }
 
 impl InterpreterType {
-    pub fn to_string(&self) -> String {
+    pub fn get_name(&self) -> String {
         match self {
             Self::Any => "any".to_string(),
             Self::Number => "number".to_string(),
@@ -35,10 +35,7 @@ impl InterpreterType {
             Self::Float => "float".to_string(),
             Self::String => "string".to_string(),
             Self::Bool => "bool".to_string(),
-            Self::Array(t) => match t {
-                Some(t) => format!("array[{}]", t.to_string()),
-                _ => "array".to_string(),
-            },
+            Self::Array(_) => "array".to_string(),
             Self::Type => "type".to_string(),
             Self::Void => "void".to_string(),
             Self::Function => "function".to_string(),
@@ -47,17 +44,43 @@ impl InterpreterType {
         }
     }
 
-    pub fn with_generics(&self, generics: Vec<InterpreterType>) -> Result<InterpreterType> {
+    pub fn to_string(&self) -> String {
         match self {
-            Self::Array(_) => {
-                if generics.len() != 1 {
-                    return Err(InterpreterTypeError::InvalidGenerics(1, generics.len()).into());
+            Self::Any => "$any".to_string(),
+            Self::Number => "$number".to_string(),
+            Self::Int => "$int".to_string(),
+            Self::Float => "$float".to_string(),
+            Self::String => "$string".to_string(),
+            Self::Bool => "$bool".to_string(),
+            Self::Array(t) => match t {
+                Some(t) => format!("$array[{}]", t.to_string()),
+                _ => "$array".to_string(),
+            },
+            Self::Type => "$type".to_string(),
+            Self::Void => "$void".to_string(),
+            Self::Function => "$function".to_string(),
+            Self::Macro => "$macro".to_string(),
+            Self::ToGet(ident) => format!("$toget[{}]", ident.to_string()),
+        }
+    }
+
+    pub fn with_generics(
+        &self,
+        generics: Option<Vec<InterpreterType>>,
+    ) -> Result<InterpreterType> {
+        match generics {
+            Some(generics) => match self {
+                Self::Array(_) => {
+                    if generics.len() != 1 {
+                        return Err(InterpreterTypeError::InvalidGenerics(1, generics.len()).into());
+                    }
+                    Ok(Self::Array(Some(Box::new(
+                        generics.first().unwrap().clone(),
+                    ))))
                 }
-                Ok(Self::Array(Some(Box::new(
-                    generics.first().unwrap().clone(),
-                ))))
-            }
-            _ => Err(InterpreterTypeError::InvalidGenerics(0, generics.len()).into()),
+                _ => Err(InterpreterTypeError::InvalidGenerics(0, generics.len()).into()),
+            },
+            None => Ok(self.clone()),
         }
     }
 

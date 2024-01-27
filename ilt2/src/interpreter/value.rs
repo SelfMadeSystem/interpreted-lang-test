@@ -100,7 +100,7 @@ impl InterpreterValue {
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
-            Self::Type(ty) => format!("${}", ty.to_string()),
+            Self::Type(ty) => ty.to_string(),
             Self::Void => "Void".to_string(),
             Self::Function { name, params, .. } => {
                 format!("Function {{ name: {}, params: {:?} }}", name, params)

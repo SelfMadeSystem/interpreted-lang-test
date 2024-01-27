@@ -1,4 +1,4 @@
-use anyhow::Result;
+use anyhow::{anyhow, Result};
 use std::{collections::HashMap, rc::Rc};
 mod types;
 mod value;
@@ -30,9 +30,9 @@ pub enum InterpreterError {
     InvalidFunctionCall(String),
     #[error("Invalid macro call for {0}")]
     InvalidMacroCall(String),
-    #[error("Invalid type ${0} at argument {1} for {2}. Expected type: ${3}")]
+    #[error("Invalid type {0} at argument {1} for {2}. Expected type: {3}")]
     InvalidTypeArgNative(String, usize, String, String),
-    #[error("Invalid return type ${0} for {1}. Expected type: ${2}")]
+    #[error("Invalid return type {0} for {1}. Expected type: {2}")]
     InvalidReturnType(String, String, String),
 }
 
@@ -137,7 +137,7 @@ impl InterpreterScope {
         }
     }
 
-    pub fn get(&self, name: &TokenIdent, line: usize, col: usize) -> Result<Rc<InterpreterValue>> {
+    fn _get(&self, name: &TokenIdent, line: usize, col: usize) -> Result<Rc<InterpreterValue>> {
         if let Some(value) = self.constants.get(name) {
             return Ok(value.clone());
         }
@@ -147,10 +147,33 @@ impl InterpreterScope {
         }
 
         if let Some(parent) = self.parent.as_ref() {
-            return g(parent).get(name, line, col);
+            return g(parent)._get(name, line, col);
         }
 
         Err(InterpreterError::VariableNotFound(name.to_string(), line, col).into())
+    }
+
+    pub fn get(&self, name: &TokenIdent, line: usize, col: usize) -> Result<Rc<InterpreterValue>> {
+        let value = self._get(&name.without_generics(), line, col)?;
+        if let InterpreterValue::Type(t) = value.as_ref() {
+            return Ok(Rc::new(InterpreterValue::Type(t.with_generics({
+                if let Some(gen) = name.get_generics() {
+                    let mut gens = Vec::new();
+                    for gen in gen.iter() {
+                        gens.push(match self.get(&gen.ident, line, col)?.as_ref() {
+                            InterpreterValue::Type(t) => t.clone(),
+                            _ => {
+                                return Err(anyhow!("ayo"));
+                            }
+                        });
+                    }
+                    Some(gens)
+                } else {
+                    None
+                }
+            })?)));
+        }
+        Ok(value)
     }
 
     pub fn set(
@@ -205,7 +228,7 @@ impl InterpreterScope {
                 Ok(Rc::new(InterpreterValue::Array(array)))
             }
             AstNodeType::Call { name, params } => {
-                let function = self.get(&name.without_generics(), node.line, node.col);
+                let function = self.get(&name, node.line, node.col);
                 let function = match function {
                     Ok(function) => function,
                     Err(_) => {
@@ -284,7 +307,7 @@ impl InterpreterScope {
                     }
                 }
                 let return_type = if let InterpreterType::ToGet(ref ident) = return_type {
-                    match scope.get(&ident.without_generics(), line, col)?.as_ref() {
+                    match scope.get(ident, line, col)?.as_ref() {
                         InterpreterValue::Type(t) => t.clone(),
                         _ => {
                             return Err(
@@ -297,7 +320,7 @@ impl InterpreterScope {
                 };
                 for ((param, param_type), value) in fn_params.iter().zip(params.iter()) {
                     let param_type = if let InterpreterType::ToGet(ref ident) = param_type {
-                        match scope.get(&ident.without_generics(), line, col)?.as_ref() {
+                        match scope.get(ident, line, col)?.as_ref() {
                             InterpreterValue::Type(t) => t.clone(),
                             _ => {
                                 return Err(
@@ -370,7 +393,7 @@ pub fn interpret(
 
     for t in types::all_types() {
         interpreter.top_scope.set_const(
-            &TokenIdent::Type(t.to_string(), None),
+            &TokenIdent::Type(t.get_name(), None),
             Rc::new(InterpreterValue::Type(t)),
             0,
             0,
