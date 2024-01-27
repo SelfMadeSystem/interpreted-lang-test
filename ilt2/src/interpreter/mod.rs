@@ -383,9 +383,7 @@ impl InterpreterScope {
                 }
                 scope.evaluate_block(&body)
             }
-            InterpreterValue::NativeFunction { body, .. } => {
-                body(self, params, line, col)
-            }
+            InterpreterValue::NativeFunction { body, .. } => body(self, params, line, col),
             _ => return Err(InterpreterError::InvalidFunctionCall(name.to_string()).into()),
         }
     }

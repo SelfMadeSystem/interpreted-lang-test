@@ -9,8 +9,8 @@ use std::io::{self, Read};
 // use crate::default_fns::default_native_functions;
 // use crate::{interpreter::interpret, parser::Parser};
 
-mod default_fns;
 mod ast;
+mod default_fns;
 mod interpreter;
 mod lexer;
 mod parser;
@@ -24,7 +24,9 @@ fn main() {
     } else {
         // Otherwise, read from stdin
         let mut buffer = String::new();
-        io::stdin().read_to_string(&mut buffer).expect("Failed to read from stdin");
+        io::stdin()
+            .read_to_string(&mut buffer)
+            .expect("Failed to read from stdin");
         buffer
     };
 
@@ -32,7 +34,8 @@ fn main() {
     let mut parser = Parser::try_new(lexer).expect("Failed to create parser");
     let ast = parser.parse().expect("Failed to parse AST");
 
-    let result = interpret(ast, native_functions(), native_macros()).expect("Failed to interpret AST");
+    let result =
+        interpret(ast, native_functions(), native_macros()).expect("Failed to interpret AST");
 
     println!("result: {:#?}", result);
 }

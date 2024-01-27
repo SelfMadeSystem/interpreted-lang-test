@@ -135,6 +135,15 @@ impl Parser {
                     col,
                 }))
             }
+            TokenType::Boolean(b) => {
+                let b = *b;
+                self.tokens.next();
+                Ok(Some(AstNode {
+                    ty: AstNodeType::Bool(b),
+                    line,
+                    col,
+                }))
+            }
             TokenType::Comma | TokenType::Colon => {
                 // comma and colon are ignored
                 self.tokens.next();
