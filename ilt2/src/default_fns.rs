@@ -24,6 +24,16 @@ pub fn native_functions() -> HashMap<String, NativeFn> {
         Ok(Rc::new(InterpreterValue::String(result)))
     });
 
+    functions.insert("gettype".to_string(), |_, args, _, _| {
+        if args.len() != 1 {
+            return Err(InterpreterError::InvalidFunctionCall("gettype".to_owned()).into());
+        }
+
+        let arg = &args[0];
+
+        Ok(Rc::new(InterpreterValue::Type(arg.get_type())))
+    });
+
     functions
 }
 

@@ -7,4 +7,4 @@
   (print (greet "World"))
   (print (greet2 "World" "Universe"))
   (print (@call greet2 ["World" "Universe"]))
-  (print $int))
+  (print (gettype $int)))
