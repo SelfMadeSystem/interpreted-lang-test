@@ -1,6 +1,8 @@
-use std::{collections::HashMap, rc::Rc};
-
 use anyhow::{Error, Result};
+use std::{collections::HashMap, rc::Rc};
+mod value;
+mod types;
+pub use value::InterpreterValue;
 
 use crate::{
     ast::{AstNode, AstNodeType},
@@ -49,105 +51,6 @@ pub type NativeMacro = fn(
 ) -> Result<Rc<InterpreterValue>>;
 
 // TODO: Add types
-#[derive(Debug, Clone)]
-pub enum InterpreterValue {
-    Int(i64),
-    Float(f64),
-    String(String),
-    Bool(bool),
-    Array(Vec<Rc<InterpreterValue>>),
-    Void,
-    Function {
-        name: String,
-        params: Vec<String>,
-        body: Vec<AstNode>,
-    },
-    NativeFunction {
-        name: String,
-        body: NativeFn,
-    },
-    Macro {
-        name: String,
-        params: Vec<String>,
-        body: Vec<AstNode>,
-    },
-    NativeMacro {
-        name: String,
-        body: NativeMacro,
-    },
-    // TODO: Scope, AstNode for macros
-}
-
-impl InterpreterValue {
-    pub fn get_type(&self) -> &'static str {
-        match self {
-            Self::Int(_) => "int",
-            Self::Float(_) => "float",
-            Self::String(_) => "string",
-            Self::Bool(_) => "bool",
-            Self::Array(_) => "array",
-            Self::Void => "void",
-            Self::Function { .. } => "function",
-            Self::NativeFunction { .. } => "native_function",
-            Self::Macro { .. } => "macro",
-            Self::NativeMacro { .. } => "native_macro",
-        }
-    }
-
-    pub fn to_formatted_string(&self) -> String {
-        match self {
-            Self::String(s) => format!("\"{}\"", s),
-            _ => self.to_string(),
-        }
-    }
-
-    pub fn to_string(&self) -> String {
-        match self {
-            Self::Int(i) => i.to_string(),
-            Self::Float(f) => f.to_string(),
-            Self::String(s) => s.to_string(),
-            Self::Bool(b) => b.to_string(),
-            Self::Array(a) => format!(
-                "[{}]",
-                a.iter()
-                    .map(|v| v.to_formatted_string())
-                    .collect::<Vec<_>>()
-                    .join(", ")
-            ),
-            Self::Void => "Void".to_string(),
-            Self::Function { name, params, .. } => {
-                format!("Function {{ name: {}, params: {:?} }}", name, params)
-            }
-            Self::NativeFunction { name, .. } => format!("NativeFunction {{ name: {} }}", name),
-            Self::Macro { name, params, .. } => {
-                format!("Macro {{ name: {}, params: {:?} }}", name, params)
-            }
-            Self::NativeMacro { name, .. } => format!("NativeMacro {{ name: {} }}", name),
-        }
-    }
-}
-
-impl TryFrom<AstNode> for InterpreterValue {
-    type Error = Error;
-
-    fn try_from(value: AstNode) -> Result<Self, Self::Error> {
-        match value.ty {
-            AstNodeType::Int(value) => Ok(Self::Int(value)),
-            AstNodeType::Float(value) => Ok(Self::Float(value)),
-            AstNodeType::String(value) => Ok(Self::String(value)),
-            AstNodeType::Array(value) => {
-                let mut array = Vec::new();
-                for value in value.iter() {
-                    array.push(Rc::new((value.clone()).try_into()?));
-                }
-                Ok(Self::Array(array))
-            }
-            _ => Err(
-                InterpreterError::InvalidConstValue(value.clone(), value.line, value.col).into(),
-            ),
-        }
-    }
-}
 
 #[derive(Debug)]
 pub struct Interpreter {
@@ -200,8 +103,8 @@ impl Interpreter {
 pub struct InterpreterScope {
     pub top_scope: bool,
     pub parent: Option<*mut InterpreterScope>,
-    pub variables: HashMap<String, Rc<InterpreterValue>>,
-    pub constants: HashMap<String, Rc<InterpreterValue>>,
+    pub variables: HashMap<TokenIdent, Rc<InterpreterValue>>,
+    pub constants: HashMap<TokenIdent, Rc<InterpreterValue>>,
 }
 
 /// I know this is unsafe, but I'm not sure how to do it otherwise without
@@ -232,7 +135,7 @@ impl InterpreterScope {
         }
     }
 
-    pub fn get(&self, name: &str, line: usize, col: usize) -> Result<Rc<InterpreterValue>> {
+    pub fn get(&self, name: &TokenIdent, line: usize, col: usize) -> Result<Rc<InterpreterValue>> {
         if let Some(value) = self.constants.get(name) {
             return Ok(value.clone());
         }
@@ -250,7 +153,7 @@ impl InterpreterScope {
 
     pub fn set(
         &mut self,
-        name: &str,
+        name: &TokenIdent,
         value: Rc<InterpreterValue>,
         line: usize,
         col: usize,
@@ -259,13 +162,13 @@ impl InterpreterScope {
             return Err(InterpreterError::CannotSetConstValue(name.to_string(), line, col).into());
         }
 
-        self.variables.insert(name.to_string(), value);
+        self.variables.insert(name.clone(), value);
         Ok(())
     }
 
     pub fn set_const(
         &mut self,
-        name: &str,
+        name: &TokenIdent,
         value: Rc<InterpreterValue>,
         line: usize,
         col: usize,
@@ -274,7 +177,7 @@ impl InterpreterScope {
             return Err(InterpreterError::CannotSetConstValue(name.to_string(), line, col).into());
         }
 
-        self.constants.insert(name.to_string(), value);
+        self.constants.insert(name.clone(), value);
         Ok(())
     }
 
@@ -300,7 +203,7 @@ impl InterpreterScope {
                 Ok(Rc::new(InterpreterValue::Array(array)))
             }
             AstNodeType::Call { name, params } => {
-                let function = self.get(name.as_str(), node.line, node.col);
+                let function = self.get(name, node.line, node.col);
                 let function = match function {
                     Ok(function) => function,
                     Err(_) => {
@@ -327,7 +230,7 @@ impl InterpreterScope {
                         let mut scope = self.new_child();
                         for (param, value) in fn_params.iter().zip(params.iter()) {
                             let value = scope.evaluate(value)?;
-                            scope.set(param, value, node.line, node.col)?;
+                            scope.set(&TokenIdent::Ident(param.to_owned()), value, node.line, node.col)?;
                         }
                         Ok(scope.evaluate_block(&body)?)
                     }
@@ -354,7 +257,7 @@ impl InterpreterScope {
                 }
             }
             AstNodeType::Ident(ident) => {
-                let value = self.get(ident.as_str(), node.line, node.col)?;
+                let value = self.get(ident, node.line, node.col)?;
                 Ok(value)
             }
         }
@@ -362,7 +265,7 @@ impl InterpreterScope {
 
     pub fn call_function(
         &mut self,
-        name: &str,
+        name: &TokenIdent,
         params: Vec<Rc<InterpreterValue>>,
         line: usize,
         col: usize,
@@ -379,7 +282,7 @@ impl InterpreterScope {
                 }
                 let mut scope = self.new_child();
                 for (param, value) in fn_params.iter().zip(params.iter()) {
-                    scope.set(param, value.clone(), line, col)?;
+                    scope.set(&TokenIdent::Ident(param.to_owned()), value.clone(), line, col)?;
                 }
                 scope.evaluate_block(&body)
             }
@@ -416,9 +319,18 @@ pub fn interpret(
         main: None,
     };
 
+    for t in types::all_types() {
+        interpreter.top_scope.set_const(
+            &TokenIdent::Type(t.0.to_owned()),
+            Rc::new(InterpreterValue::Type(t.1)),
+            0,
+            0,
+        )?;
+    }
+
     for (name, function) in functions {
         interpreter.top_scope.set_const(
-            &name,
+            &TokenIdent::Ident(name.to_owned()),
             Rc::new(InterpreterValue::NativeFunction {
                 name: name.clone(),
                 body: function,
@@ -430,7 +342,7 @@ pub fn interpret(
 
     for (name, function) in macros {
         interpreter.top_scope.set_const(
-            &name,
+            &TokenIdent::Macro(name.to_owned()),
             Rc::new(InterpreterValue::NativeMacro {
                 name: name.clone(),
                 body: function,

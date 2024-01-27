@@ -36,7 +36,7 @@ pub fn native_macros() -> HashMap<String, NativeMacro> {
         }
 
         let name = match &args[0].ty {
-            AstNodeType::Ident(TokenIdent::Ident(s)) => s,
+            AstNodeType::Ident(t) if matches!(t, TokenIdent::Ident(_)) => t,
             _ => return Err(InterpreterError::InvalidMacroCall("fn".to_owned()).into()),
         };
 
@@ -57,7 +57,7 @@ pub fn native_macros() -> HashMap<String, NativeMacro> {
         let body = args[2..].to_vec();
 
         let func = Rc::new(InterpreterValue::Function {
-            name: name.to_owned(),
+            name: name.to_string(),
             params,
             body,
         });
@@ -77,7 +77,7 @@ pub fn native_macros() -> HashMap<String, NativeMacro> {
         }
 
         let name = match &args[0].ty {
-            AstNodeType::Ident(TokenIdent::Ident(s)) => s,
+            AstNodeType::Ident(t) if matches!(t, TokenIdent::Ident(_)) => t,
             _ => return Err(InterpreterError::InvalidMacroCall("macro".to_owned()).into()),
         };
 
@@ -102,7 +102,7 @@ pub fn native_macros() -> HashMap<String, NativeMacro> {
         let body = args[2..].to_vec();
 
         let func = Rc::new(InterpreterValue::Macro {
-            name: name.to_owned(),
+            name: name.to_string(),
             params,
             body,
         });
@@ -122,7 +122,7 @@ pub fn native_macros() -> HashMap<String, NativeMacro> {
         }
 
         let name = match &args[0].ty {
-            AstNodeType::Ident(s) => s.as_str(),
+            AstNodeType::Ident(s) => s,
             _ => return Err(InterpreterError::InvalidMacroCall("call".to_owned()).into()),
         };
 

@@ -5,7 +5,7 @@ pub struct Token {
     pub col: usize,
 }
 
-#[derive(Debug, PartialEq, Clone)]
+#[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
 pub enum TokenIdent {
     Ident(String),
     Macro(String),
@@ -13,16 +13,12 @@ pub enum TokenIdent {
 }
 
 impl TokenIdent {
-    pub fn as_str(&self) -> &str {
-        match self {
-            Self::Ident(s) => s,
-            Self::Macro(s) => s,
-            Self::Type(s) => s,
-        }
-    }
-
     pub fn to_string(&self) -> String {
-        self.as_str().to_string()
+        match self {
+            Self::Ident(s) => s.to_owned(),
+            Self::Macro(s) => format!("@{}", s),
+            Self::Type(s) => format!("${}", s),
+        }
     }
 }
 
