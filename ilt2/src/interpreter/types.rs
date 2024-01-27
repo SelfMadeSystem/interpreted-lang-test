@@ -1,37 +1,53 @@
-use super::InterpreterValue;
-use std::rc::Rc;
+use std::collections::HashMap;
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
 pub struct InterpreterType {
-    pub name: String,
+    pub name: &'static str,
     // pub generics: Vec<InterpreterType>,
     pub is_macro: bool,
 }
 
-macro_rules! ttt {
-    ($name:literal) => {
-        (
-            $name.to_string(),
-            InterpreterType {
-                name: $name.to_string(),
-                is_macro: false,
-            },
-        )
+impl InterpreterType {
+    pub fn to_string(&self) -> String {
+        self.name.to_string()
+    }
+}
+
+macro_rules! define_types {
+    ($(($name:ident, $upper:ident)),* $(,)?) => {
+        impl InterpreterType {
+            $(
+                #[allow(dead_code)]
+                pub const $upper: Self = Self {
+                    name: stringify!($name),
+                    is_macro: false,
+                };
+            )*
+        }
+
+        pub fn all_types() -> HashMap<String, InterpreterType> {
+            let mut map = HashMap::new();
+            $(
+                map.insert(stringify!($name).to_string(), InterpreterType {
+                    name: stringify!($name),
+                    is_macro: false,
+                });
+            )*
+            map
+        }
     };
 }
 
-pub fn all_types() -> Vec<(String, InterpreterType)> {
-    vec![
-        ttt!("any"),
-        ttt!("number"),
-        ttt!("int"),
-        ttt!("float"),
-        ttt!("string"),
-        ttt!("bool"),
-        ttt!("array"),
-        ttt!("type"),
-        ttt!("void"),
-        ttt!("function"),
-        ttt!("macro"),
-    ]
+define_types! {
+    (any, ANY),
+    (number, NUMBER),
+    (int, INT),
+    (float, FLOAT),
+    (string, STRING),
+    (bool, BOOL),
+    (array, ARRAY),
+    (type, TYPE),
+    (void, VOID),
+    (function, FUNCTION),
+    (macro, MACRO),
 }

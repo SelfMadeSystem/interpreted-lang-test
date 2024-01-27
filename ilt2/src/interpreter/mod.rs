@@ -1,7 +1,8 @@
-use anyhow::{Error, Result};
+use anyhow::Result;
 use std::{collections::HashMap, rc::Rc};
-mod value;
 mod types;
+mod value;
+pub use types::InterpreterType;
 pub use value::InterpreterValue;
 
 use crate::{
@@ -29,12 +30,14 @@ pub enum InterpreterError {
     InvalidFunctionCall(String),
     #[error("Invalid macro call for {0}")]
     InvalidMacroCall(String),
-    #[error("Invalid types {0} for {1}")]
+    #[error("Invalid types ${0} for {1}")]
     InvalidType1Native(String, String),
-    #[error("Invalid types {0} and {1} for {2}")]
+    #[error("Invalid types ${0} and ${1} for {2}")]
     InvalidType2Native(String, String, String),
-    #[error("Invalid type {0} at argument {1} for {2}. Expected type: {3}")]
+    #[error("Invalid type ${0} at argument {1} for {2}. Expected type: ${3}")]
     InvalidTypeArgNative(String, usize, String, String),
+    #[error("Invalid return type ${0} for {1}. Expected type: ${2}")]
+    InvalidReturnType(String, String, String),
 }
 
 pub type NativeFn = fn(
@@ -217,26 +220,9 @@ impl InterpreterScope {
                     }
                 };
                 match function.as_ref() {
-                    InterpreterValue::Function {
-                        name,
-                        params: fn_params,
-                        body,
-                    } => {
-                        if params.len() != fn_params.len() {
-                            return Err(
-                                InterpreterError::InvalidFunctionCall(name.to_owned()).into()
-                            );
-                        }
-                        let mut scope = self.new_child();
-                        for (param, value) in fn_params.iter().zip(params.iter()) {
-                            let value = scope.evaluate(value)?;
-                            scope.set(&TokenIdent::Ident(param.to_owned()), value, node.line, node.col)?;
-                        }
-                        Ok(scope.evaluate_block(&body)?)
-                    }
-                    InterpreterValue::NativeFunction { body, .. } => {
+                    InterpreterValue::Function { .. } | InterpreterValue::NativeFunction { .. } => {
                         let params = self.evaluate_each(params)?;
-                        body(self, params, node.line, node.col)
+                        self.call_function(name, function, params, node.line, node.col)
                     }
                     InterpreterValue::Macro {
                         name,
@@ -266,25 +252,49 @@ impl InterpreterScope {
     pub fn call_function(
         &mut self,
         name: &TokenIdent,
+        func: Rc<InterpreterValue>,
         params: Vec<Rc<InterpreterValue>>,
         line: usize,
         col: usize,
     ) -> Result<Rc<InterpreterValue>> {
-        let function = self.get(name, line, col)?;
-        match function.as_ref() {
+        match func.as_ref() {
             InterpreterValue::Function {
                 name,
                 params: fn_params,
+                return_type,
                 body,
             } => {
                 if params.len() != fn_params.len() {
                     return Err(InterpreterError::InvalidFunctionCall(name.to_owned()).into());
                 }
                 let mut scope = self.new_child();
-                for (param, value) in fn_params.iter().zip(params.iter()) {
-                    scope.set(&TokenIdent::Ident(param.to_owned()), value.clone(), line, col)?;
+                for ((param, param_type), value) in fn_params.iter().zip(params.iter()) {
+                    if !value.check_type(param_type) {
+                        return Err(InterpreterError::InvalidTypeArgNative(
+                            value.get_type().to_string(),
+                            0,
+                            name.to_string(),
+                            param_type.to_string(),
+                        )
+                        .into());
+                    }
+                    scope.set(
+                        &TokenIdent::Ident(param.to_owned()),
+                        value.clone(),
+                        line,
+                        col,
+                    )?;
                 }
-                scope.evaluate_block(&body)
+                let ret = scope.evaluate_block(&body)?;
+                if !ret.check_type(return_type) {
+                    return Err(InterpreterError::InvalidReturnType(
+                        ret.get_type().to_string(),
+                        name.to_string(),
+                        return_type.to_string(),
+                    )
+                    .into());
+                }
+                Ok(ret)
             }
             InterpreterValue::NativeFunction { body, .. } => body(self, params, line, col),
             _ => return Err(InterpreterError::InvalidFunctionCall(name.to_string()).into()),

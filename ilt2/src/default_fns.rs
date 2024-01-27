@@ -1,8 +1,8 @@
 use std::{collections::HashMap, rc::Rc};
 
 use crate::{
-    ast::AstNodeType,
-    interpreter::{InterpreterError, InterpreterValue, NativeFn, NativeMacro},
+    ast::{AstNode, AstNodeType},
+    interpreter::{InterpreterError, InterpreterType, InterpreterValue, NativeFn, NativeMacro},
     token::TokenIdent,
 };
 
@@ -69,9 +69,33 @@ pub fn native_macros() -> HashMap<String, NativeMacro> {
 
         match &args[1].ty {
             AstNodeType::Array(params_) => {
-                for param in params_ {
+                let mut iter = params_.into_iter().peekable();
+                while let Some(param) = iter.next() {
                     match &param.ty {
-                        AstNodeType::Ident(TokenIdent::Ident(s)) => params.push(s.to_owned()),
+                        AstNodeType::Ident(TokenIdent::Ident(s)) => params.push((
+                            s.to_owned(),
+                            match iter.peek() {
+                                Some(AstNode {
+                                    ty: AstNodeType::Ident(t),
+                                    line,
+                                    col,
+                                }) if matches!(t, TokenIdent::Type(_)) => {
+                                    match scope.get(t, *line, *col)?.as_ref() {
+                                        InterpreterValue::Type(t) => {
+                                            iter.next();
+                                            t.clone()
+                                        }
+                                        _ => {
+                                            return Err(InterpreterError::InvalidMacroCall(
+                                                "fn".to_owned(),
+                                            )
+                                            .into())
+                                        }
+                                    }
+                                }
+                                _ => InterpreterType::ANY,
+                            },
+                        )),
                         _ => return Err(InterpreterError::InvalidMacroCall("fn".to_owned()).into()),
                     }
                 }
@@ -79,11 +103,22 @@ pub fn native_macros() -> HashMap<String, NativeMacro> {
             _ => return Err(InterpreterError::InvalidMacroCall("fn".to_owned()).into()),
         }
 
-        let body = args[2..].to_vec();
+        let (return_type, has) = match &args[2].ty {
+            AstNodeType::Ident(t) if matches!(t, TokenIdent::Type(_)) => {
+                match scope.get(t, line, col)?.as_ref() {
+                    InterpreterValue::Type(t) => (t.clone(), true),
+                    _ => return Err(InterpreterError::InvalidMacroCall("fn".to_owned()).into()),
+                }
+            }
+            _ => (InterpreterType::ANY, false),
+        };
+
+        let body = args[if has { 3 } else { 2 }..].to_vec();
 
         let func = Rc::new(InterpreterValue::Function {
             name: name.to_string(),
             params,
+            return_type,
             body,
         });
 
@@ -113,7 +148,11 @@ pub fn native_macros() -> HashMap<String, NativeMacro> {
                 for param in params_ {
                     match &param.ty {
                         AstNodeType::Ident(TokenIdent::Ident(s)) => params.push(s.to_owned()),
-                        _ => return Err(InterpreterError::InvalidMacroCall("macro".to_owned()).into()),
+                        _ => {
+                            return Err(
+                                InterpreterError::InvalidMacroCall("macro".to_owned()).into()
+                            )
+                        }
                     }
                 }
             }
@@ -151,13 +190,15 @@ pub fn native_macros() -> HashMap<String, NativeMacro> {
             _ => return Err(InterpreterError::InvalidMacroCall("call".to_owned()).into()),
         };
 
+        let func = scope.get(name, line, col)?;
+
         let params = match &args[1].ty {
             AstNodeType::Array(args) => args,
             _ => return Err(InterpreterError::InvalidMacroCall("call".to_owned()).into()),
         };
         let params = scope.evaluate_each(params)?;
 
-        Ok(scope.call_function(name, params, line, col)?)
+        Ok(scope.call_function(name, func, params, line, col)?)
     });
 
     macros

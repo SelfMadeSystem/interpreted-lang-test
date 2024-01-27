@@ -4,7 +4,7 @@ use thiserror::Error;
 
 use crate::ast::{AstNode, AstNodeType};
 use crate::lexer::Lexer;
-use crate::token::{Token, TokenType, TokenIdent};
+use crate::token::{Token, TokenType};
 
 #[derive(Error, Debug)]
 pub enum ParseError {
@@ -25,13 +25,6 @@ impl ParseError {
     pub fn new_opt_ref(token: Option<&Token>) -> Self {
         match token {
             Some(token) => Self::new_unexpected(token),
-            None => Self::UnexpectedEof,
-        }
-    }
-
-    pub fn new_opt(token: Option<Token>) -> Self {
-        match token {
-            Some(token) => Self::new_unexpected(&token),
             None => Self::UnexpectedEof,
         }
     }

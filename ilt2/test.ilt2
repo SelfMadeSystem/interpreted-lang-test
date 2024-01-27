@@ -1,10 +1,12 @@
-(@fn greet [name]
+(@fn greet [name: $string]
   (concat "Hello, " name "!"))
-(@fn greet2 [name1, name2]
+(@fn greet2 [name1: $string, name2: $string]
   (concat "Hello, " name1 " and " name2 "!"))
+(@fn invalid_return_type []: $int
+  "This isn't a number")
 
 (@main
   (print (greet "World"))
   (print (greet2 "World" "Universe"))
   (print (@call greet2 ["World" "Universe"]))
-  (print (matches $bool false)))
+  (print (matches $number 0.1)))

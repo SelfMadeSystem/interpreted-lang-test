@@ -17,7 +17,8 @@ pub enum InterpreterValue {
     Void,
     Function {
         name: String,
-        params: Vec<String>,
+        params: Vec<(String, InterpreterType)>,
+        return_type: InterpreterType,
         body: Vec<AstNode>,
     },
     NativeFunction {
@@ -40,47 +41,47 @@ impl InterpreterValue {
     pub fn get_type(&self) -> InterpreterType {
         match self {
             Self::Int(_) => InterpreterType {
-                name: "int".to_string(),
+                name: "int",
                 is_macro: false,
             },
             Self::Float(_) => InterpreterType {
-                name: "float".to_string(),
+                name: "float",
                 is_macro: false,
             },
             Self::String(_) => InterpreterType {
-                name: "string".to_string(),
+                name: "string",
                 is_macro: false,
             },
             Self::Bool(_) => InterpreterType {
-                name: "bool".to_string(),
+                name: "bool",
                 is_macro: false,
             },
             Self::Array(_) => InterpreterType {
-                name: "array".to_string(),
+                name: "array",
                 is_macro: false,
             },
             Self::Type(_) => InterpreterType {
-                name: "type".to_string(),
+                name: "type",
                 is_macro: false,
             },
             Self::Void => InterpreterType {
-                name: "void".to_string(),
+                name: "void",
                 is_macro: false,
             },
             Self::Function { .. } => InterpreterType {
-                name: "function".to_string(),
+                name: "function",
                 is_macro: false,
             },
             Self::NativeFunction { .. } => InterpreterType {
-                name: "function".to_string(),
+                name: "function",
                 is_macro: false,
             },
             Self::Macro { .. } => InterpreterType {
-                name: "macro".to_string(),
+                name: "macro",
                 is_macro: false,
             },
             Self::NativeMacro { .. } => InterpreterType {
-                name: "macro".to_string(),
+                name: "macro",
                 is_macro: false,
             },
         }
