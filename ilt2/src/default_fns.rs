@@ -34,19 +34,47 @@ pub fn native_functions() -> HashMap<String, NativeFn> {
         Ok(Rc::new(InterpreterValue::Type(arg.get_type())))
     });
 
-    functions.insert("matches".to_string(), |_, args, _, _| {
+    // returns true if value 2 is of type value 1 (value 1 is a type)
+    functions.insert("istype".to_string(), |_, args, _, _| {
         if args.len() != 2 {
-            return Err(InterpreterError::InvalidFunctionCall("matches".to_owned()).into());
+            return Err(InterpreterError::InvalidFunctionCall("istype".to_owned()).into());
         }
 
         let ty = match &args[0].as_ref() {
             InterpreterValue::Type(t) => t,
-            _ => return Err(InterpreterError::InvalidFunctionCall("matches".to_owned()).into()),
+            _ => return Err(InterpreterError::InvalidFunctionCall("istype".to_owned()).into()),
         };
 
         let value = &args[1];
 
         Ok(Rc::new(InterpreterValue::Bool(value.check_type(ty))))
+    });
+
+    // returns true if value 1 is assignable to type value 2 (both are types)
+    functions.insert("isassignable".to_string(), |_, args, _, _| {
+        if args.len() != 2 {
+            return Err(InterpreterError::InvalidFunctionCall("isassignable".to_owned()).into());
+        }
+
+        let ty = match &args[0].as_ref() {
+            InterpreterValue::Type(t) => t,
+            _ => {
+                return Err(
+                    InterpreterError::InvalidFunctionCall("isassignable".to_owned()).into(),
+                )
+            }
+        };
+
+        let value = match &args[1].as_ref() {
+            InterpreterValue::Type(t) => t,
+            _ => {
+                return Err(
+                    InterpreterError::InvalidFunctionCall("isassignable".to_owned()).into(),
+                )
+            }
+        };
+
+        Ok(Rc::new(InterpreterValue::Bool(ty.is_assignable(value))))
     });
 
     functions

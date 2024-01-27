@@ -125,6 +125,35 @@ impl InterpreterType {
             }
         }
     }
+
+    /// Whether ty can be assigned to self
+    /// 
+    /// e.g. `int` is assignable to `number`, but `number` is not assignable to `int`
+    /// 
+    /// basically, true if self is the same or more general than ty
+    pub fn is_assignable(&self, ty: &InterpreterType) -> bool {
+        if let InterpreterType::ToGet(t) = self {
+            eprintln!("toget: {}", t.to_string());
+            return false;
+        }
+        if self == ty {
+            return true;
+        }
+        match (self, ty) {
+            (InterpreterType::Any, _) => true,
+            (InterpreterType::Number, InterpreterType::Int) => true,
+            (InterpreterType::Number, InterpreterType::Float) => true,
+            (InterpreterType::Array(None), InterpreterType::Array(_) | InterpreterType::Tuple(_)) => true,
+            (InterpreterType::Array(Some(t)), InterpreterType::Array(Some(ty))) => t.is_assignable(ty),
+            (InterpreterType::Array(Some(t)), InterpreterType::Tuple(ty)) => ty.iter().all(|ty| t.is_assignable(ty)),
+            (InterpreterType::Tuple(t), InterpreterType::Tuple(ty)) => t.len() == ty.len() && t.iter().zip(ty.iter()).all(|(t, ty)| t.is_assignable(ty)),
+            (InterpreterType::Type, InterpreterType::Type) => true,
+            (InterpreterType::Void, InterpreterType::Void) => true,
+            (InterpreterType::Function, InterpreterType::Function) => true,
+            (InterpreterType::Macro, InterpreterType::Macro) => true,
+            _ => false,
+        }
+    }
 }
 
 pub fn all_types() -> Vec<InterpreterType> {

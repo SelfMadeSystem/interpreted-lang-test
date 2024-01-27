@@ -1,5 +1,2 @@
-(@fn duplicate [val]
-  [val val])
-
 (@main
-  (print (duplicate 3)))
+  (print (istype $array[$int] [2, 3, 4])))
