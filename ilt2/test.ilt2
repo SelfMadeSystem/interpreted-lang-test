@@ -1,5 +1,5 @@
-(@fn duplicate[$T] [val: $T]: $array[$T]
+(@fn duplicate [val]
   [val val])
 
 (@main
-  (print (duplicate[$int] 1)))
+  (print (duplicate 3)))

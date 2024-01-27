@@ -19,6 +19,7 @@ pub enum InterpreterType {
     String,
     Bool,
     Array(Option<Box<InterpreterType>>),
+    Tuple(Vec<InterpreterType>),
     Type,
     Void,
     Function,
@@ -36,6 +37,7 @@ impl InterpreterType {
             Self::String => "string".to_string(),
             Self::Bool => "bool".to_string(),
             Self::Array(_) => "array".to_string(),
+            Self::Tuple(_) => "tuple".to_string(),
             Self::Type => "type".to_string(),
             Self::Void => "void".to_string(),
             Self::Function => "function".to_string(),
@@ -56,6 +58,7 @@ impl InterpreterType {
                 Some(t) => format!("$array[{}]", t.to_string()),
                 _ => "$array".to_string(),
             },
+            Self::Tuple(t) => format!("$tuple[{}]", t.iter().map(|t| t.to_string()).collect::<Vec<String>>().join(", ")),
             Self::Type => "$type".to_string(),
             Self::Void => "$void".to_string(),
             Self::Function => "$function".to_string(),
@@ -78,6 +81,7 @@ impl InterpreterType {
                         generics.first().unwrap().clone(),
                     ))))
                 }
+                Self::Tuple(_) => Ok(Self::Tuple(generics)),
                 _ => Err(InterpreterTypeError::InvalidGenerics(0, generics.len()).into()),
             },
             None => Ok(self.clone()),
@@ -97,6 +101,18 @@ impl InterpreterType {
                     Some(t) => arr.iter().all(|v| t.validate(v)),
                     _ => true,
                 },
+                _ => false,
+            },
+            InterpreterType::Tuple(t) => match val {
+                InterpreterValue::Array(tuple) => {
+                    if tuple.len() != t.len() {
+                        return false;
+                    }
+                    tuple
+                        .iter()
+                        .zip(t.iter())
+                        .all(|(v, t)| t.validate(v))
+                }
                 _ => false,
             },
             InterpreterType::Type => matches!(val, InterpreterValue::Type(_)),
@@ -120,6 +136,7 @@ pub fn all_types() -> Vec<InterpreterType> {
         InterpreterType::String,
         InterpreterType::Bool,
         InterpreterType::Array(None),
+        InterpreterType::Tuple(vec![]),
         InterpreterType::Type,
         InterpreterType::Void,
         InterpreterType::Function,

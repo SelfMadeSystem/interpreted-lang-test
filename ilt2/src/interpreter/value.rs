@@ -26,6 +26,7 @@ pub enum InterpreterValue {
         name: String,
         body: NativeFn,
     },
+    #[allow(dead_code)]
     Macro {
         name: String,
         params: Vec<String>,
@@ -45,7 +46,9 @@ impl InterpreterValue {
             Self::Float(_) => InterpreterType::Float,
             Self::String(_) => InterpreterType::String,
             Self::Bool(_) => InterpreterType::Bool,
-            Self::Array(_) => InterpreterType::Array(None),
+            Self::Array(vals) => {
+                InterpreterType::Tuple(vals.iter().map(|v| v.get_type()).collect())
+            }
             Self::Type(_) => InterpreterType::Type,
             Self::Void => InterpreterType::Void,
             Self::Function { .. } => InterpreterType::Function,
