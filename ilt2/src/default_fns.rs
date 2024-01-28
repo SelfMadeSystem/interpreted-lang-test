@@ -1027,5 +1027,26 @@ pub fn native_macros() -> HashMap<String, NativeMacro> {
         Ok(result)
     });
 
+    macros.insert("dict".to_string(), |scope, args, _, _| {
+        if args.len() % 2 != 0 {
+            return Err(InterpreterError::InvalidMacroCall("dict".to_owned()).into());
+        }
+
+        let mut dict = HashMap::new();
+
+        for i in (0..args.len()).step_by(2) {
+            let key = match &args[i].ty {
+                AstNodeType::Ident(s) => s,
+                _ => return Err(InterpreterError::InvalidMacroCall("dict".to_owned()).into()),
+            };
+
+            let value = scope.evaluate(&args[i + 1])?;
+
+            dict.insert(key.name().to_owned(), value);
+        }
+
+        Ok(Rc::new(InterpreterValue::Dict(RefCell::new(dict))))
+    });
+
     macros
 }

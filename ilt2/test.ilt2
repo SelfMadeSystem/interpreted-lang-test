@@ -1,25 +1,6 @@
-(@fn sum[$T: $number] [arr: $array[$T]]: $T
-    (@ifelse (== (len arr) 0)
-        (as $T 0)
-        (+ (head arr) (sum[$T] (tail arr)))))
-
-// eg. intermix[$int, $string] [1 2 3] ["a" "b" "c"] -> [1 "a" 2 "b" 3 "c"]
-// eg. intermix[$int, $string] [1 2 3 4 5] ["a" "b" "c"] -> [1 "a" 2 "b" 3 "c" 4 5]
-// eg. intermix[$int, $string] [1 2 3] ["a" "b" "c" "d" "e"] -> [1 "a" 2 "b" 3 "c" "d" "e"]
-(@fn intermix[$A, $B] [a: $array[$A] b: $array[$B]]: $array[$union[$A, $B]]
-    (@let result [])
-    (@let i 0)
-    (@while (< i (max (len a) (len b)))
-        (@if (< i (len a))
-            (push result (get a i)))
-        (@if (< i (len b))
-            (push result (get b i)))
-        (@set i (+ i 1)))
-    result)
-
-
 (@main
-    (print (sum[$int] [1 2 3 4 5]))
-    (print (intermix[$int, $string] [1 2 3] ["a" "b" "c"]))
-    (print (intermix[$int, $string] [1 2 3 4 5] ["a" "b" "c"]))
-    (print (intermix[$int, $string] [1 2 3] ["a" "b" "c" "d" "e"])))
+    (@let my_dict (@dict a: 1,
+                         b: 2,
+                         c: 3))
+    (print my_dict) // since dicts are unordered, the order of the entries may vary
+    (print (gettype my_dict)))

@@ -1,4 +1,4 @@
-use std::{cell::RefCell, rc::Rc};
+use std::{cell::RefCell, collections::{HashMap, HashSet}, rc::Rc};
 
 use anyhow::{Error, Result};
 
@@ -16,6 +16,7 @@ pub enum InterpreterValue {
     String(String),
     Bool(bool),
     Array(RefCell<Vec<Rc<InterpreterValue>>>),
+    Dict(RefCell<HashMap<String, Rc<InterpreterValue>>>),
     Type(InterpreterType),
     Void,
     Function {
@@ -52,6 +53,18 @@ impl InterpreterValue {
             Self::Array(vals) => {
                 InterpreterType::Tuple(vals.borrow().iter().map(|v| v.get_type()).collect())
             }
+            Self::Dict(dict) => InterpreterType::Dict(Box::new({
+                // union of all values
+                let mut tys = HashSet::new();
+                for (_, val) in dict.borrow().iter() {
+                    tys.insert(val.get_type());
+                }
+                if tys.len() == 1 {
+                    tys.into_iter().next().unwrap()
+                } else {
+                    InterpreterType::Union(tys.into_iter().collect())
+                }
+            })),
             Self::Type(_) => InterpreterType::Type,
             Self::Void => InterpreterType::Void,
             Self::Function { .. } => InterpreterType::Function,
@@ -177,12 +190,25 @@ impl InterpreterValue {
                         return Ok(self.clone());
                     }
                 }
-                Err(InterpreterError::InvalidTypeCast(
+                Err(
+                    InterpreterError::InvalidTypeCast(self.get_type().to_string(), ty.to_string())
+                        .into(),
+                )
+            }
+            InterpreterType::Dict(ty) => match self {
+                Self::Dict(dict) => {
+                    let mut new_dict = HashMap::new();
+                    for (key, val) in dict.borrow().iter() {
+                        new_dict.insert(key.clone(), Rc::new(val.as_type(ty)?));
+                    }
+                    Ok(Self::Dict(RefCell::new(new_dict)))
+                }
+                _ => Err(InterpreterError::InvalidTypeCast(
                     self.get_type().to_string(),
                     ty.to_string(),
                 )
-                .into())
-            }
+                .into()),
+            },
             InterpreterType::Type => match self {
                 Self::Type(ty) => Ok(Self::Type(ty.clone())),
                 _ => Err(InterpreterError::InvalidTypeCast(
@@ -233,8 +259,17 @@ impl InterpreterValue {
             Self::Bool(b) => b.to_string(),
             Self::Array(a) => format!(
                 "[{}]",
-                a.borrow().iter()
+                a.borrow()
+                    .iter()
                     .map(|v| v.to_formatted_string())
+                    .collect::<Vec<_>>()
+                    .join(", ")
+            ),
+            Self::Dict(m) => format!(
+                "{{{}}}",
+                m.borrow()
+                    .iter()
+                    .map(|(k, v)| format!("{}: {}", k, v.to_formatted_string()))
                     .collect::<Vec<_>>()
                     .join(", ")
             ),
