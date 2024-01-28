@@ -541,6 +541,50 @@ fn math_functions(functions: &mut HashMap<String, NativeFn>) {
             _ => Err(InterpreterError::InvalidFunctionCall("abs".to_owned()).into()),
         }
     });
+
+    functions.insert("max".to_string(), |_, args, _, _| {
+        if args.len() == 0 {
+            return Err(InterpreterError::InvalidFunctionCall("max".to_owned()).into());
+        }
+
+        let mut result = match &args[0].as_ref() {
+            InterpreterValue::Int(i) => *i,
+            InterpreterValue::Float(f) => *f as i64,
+            _ => return Err(InterpreterError::InvalidFunctionCall("max".to_owned()).into()),
+        };
+
+        for arg in &args[1..] {
+            match &arg.as_ref() {
+                InterpreterValue::Int(i) => result = result.max(*i),
+                InterpreterValue::Float(f) => result = result.max(*f as i64),
+                _ => return Err(InterpreterError::InvalidFunctionCall("max".to_owned()).into()),
+            }
+        }
+
+        Ok(Rc::new(InterpreterValue::Int(result)))
+    });
+
+    functions.insert("min".to_string(), |_, args, _, _| {
+        if args.len() == 0 {
+            return Err(InterpreterError::InvalidFunctionCall("min".to_owned()).into());
+        }
+
+        let mut result = match &args[0].as_ref() {
+            InterpreterValue::Int(i) => *i,
+            InterpreterValue::Float(f) => *f as i64,
+            _ => return Err(InterpreterError::InvalidFunctionCall("min".to_owned()).into()),
+        };
+
+        for arg in &args[1..] {
+            match &arg.as_ref() {
+                InterpreterValue::Int(i) => result = result.min(*i),
+                InterpreterValue::Float(f) => result = result.min(*f as i64),
+                _ => return Err(InterpreterError::InvalidFunctionCall("min".to_owned()).into()),
+            }
+        }
+
+        Ok(Rc::new(InterpreterValue::Int(result)))
+    });
 }
 
 fn array_functions(functions: &mut HashMap<String, NativeFn>) {
@@ -755,6 +799,41 @@ pub fn native_macros() -> HashMap<String, NativeMacro> {
         Ok(Rc::new(InterpreterValue::Void))
     });
 
+    // TODO: Hold optional variable type information
+    macros.insert("let".to_string(), |scope, args, line, col| {
+        if args.len() != 2 {
+            return Err(InterpreterError::InvalidMacroCall("let".to_owned()).into());
+        }
+
+        let name = match &args[0].ty {
+            AstNodeType::Ident(t) if matches!(t, TokenIdent::Ident(..)) => t,
+            _ => return Err(InterpreterError::InvalidMacroCall("let".to_owned()).into()),
+        };
+
+        let value = scope.evaluate(&args[1])?;
+
+        scope.set(&name.without_generics(), value, line, col)?;
+
+        Ok(Rc::new(InterpreterValue::Void))
+    });
+
+    macros.insert("set".to_string(), |scope, args, line, col| {
+        if args.len() != 2 {
+            return Err(InterpreterError::InvalidMacroCall("set".to_owned()).into());
+        }
+
+        let name = match &args[0].ty {
+            AstNodeType::Ident(t) if matches!(t, TokenIdent::Ident(..)) => t,
+            _ => return Err(InterpreterError::InvalidMacroCall("set".to_owned()).into()),
+        };
+
+        let value = scope.evaluate(&args[1])?;
+
+        scope.replace(&name.without_generics(), value, line, col)?;
+
+        Ok(Rc::new(InterpreterValue::Void))
+    });
+
     macros.insert("fn".to_string(), |scope, args, line, col| {
         if args.len() < 2 {
             return Err(InterpreterError::InvalidMacroCall("fn".to_owned()).into());
@@ -836,9 +915,11 @@ pub fn native_macros() -> HashMap<String, NativeMacro> {
 
         let func = Rc::new(InterpreterValue::Function {
             name: name.name().to_owned(),
-            generics: name
-                .get_generics()
-                .map(|v| v.iter().map(|v| (v.ident.name().to_owned(), v.type_ident.to_owned())).collect()),
+            generics: name.get_generics().map(|v| {
+                v.iter()
+                    .map(|v| (v.ident.name().to_owned(), v.type_ident.to_owned()))
+                    .collect()
+            }),
             params,
             return_type,
             body,
@@ -894,6 +975,52 @@ pub fn native_macros() -> HashMap<String, NativeMacro> {
         let body = if condition { &args[1] } else { &args[2] };
 
         scope.evaluate(body)
+    });
+
+    macros.insert("if".to_string(), |scope, args, line, col| {
+        if args.len() < 2 {
+            return Err(InterpreterError::InvalidMacroCall("if".to_owned()).into());
+        }
+
+        let condition = match &args[0].ty {
+            AstNodeType::Ident(s) => scope.get(s, line, col)?,
+            AstNodeType::Bool(b) => Rc::new(InterpreterValue::Bool(*b)),
+            AstNodeType::Call { .. } => scope.evaluate(&args[0])?,
+            _ => return Err(InterpreterError::InvalidMacroCall("if".to_owned()).into()),
+        };
+
+        let condition = match condition.as_ref() {
+            InterpreterValue::Bool(b) => *b,
+            _ => return Err(InterpreterError::InvalidMacroCall("if".to_owned()).into()),
+        };
+
+        if condition {
+            scope.evaluate_block(&args[1..])
+        } else {
+            Ok(Rc::new(InterpreterValue::Void))
+        }
+    });
+
+    macros.insert("while".to_string(), |scope, args, line, col| {
+        if args.len() < 2 {
+            return Err(InterpreterError::InvalidMacroCall("while".to_owned()).into());
+        }
+
+        let mut result = Rc::new(InterpreterValue::Void);
+        while match (match &args[0].ty {
+            AstNodeType::Ident(s) => scope.get(s, line, col)?,
+            AstNodeType::Bool(b) => Rc::new(InterpreterValue::Bool(*b)),
+            AstNodeType::Call { .. } => scope.evaluate(&args[0])?,
+            _ => return Err(InterpreterError::InvalidMacroCall("while".to_owned()).into()),
+        })
+        .as_ref()
+        {
+            InterpreterValue::Bool(b) => *b,
+            _ => return Err(InterpreterError::InvalidMacroCall("while".to_owned()).into()),
+        } {
+            result = scope.evaluate_block(&args[1..])?;
+        }
+        Ok(result)
     });
 
     macros

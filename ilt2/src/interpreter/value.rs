@@ -171,6 +171,18 @@ impl InterpreterValue {
                 )
                 .into()),
             },
+            InterpreterType::Union(tys) => {
+                for ty in tys.iter() {
+                    if ty.validate(self) {
+                        return Ok(self.clone());
+                    }
+                }
+                Err(InterpreterError::InvalidTypeCast(
+                    self.get_type().to_string(),
+                    ty.to_string(),
+                )
+                .into())
+            }
             InterpreterType::Type => match self {
                 Self::Type(ty) => Ok(Self::Type(ty.clone())),
                 _ => Err(InterpreterError::InvalidTypeCast(

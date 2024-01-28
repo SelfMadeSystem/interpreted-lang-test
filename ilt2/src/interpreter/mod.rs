@@ -241,6 +241,29 @@ impl InterpreterScope {
         Ok(())
     }
 
+    pub fn replace(
+        &mut self,
+        name: &TokenIdent,
+        value: Rc<InterpreterValue>,
+        line: usize,
+        col: usize,
+    ) -> Result<()> {
+        if self.constants.contains_key(name) {
+            return Err(InterpreterError::CannotSetConstValue(name.to_string(), line, col).into());
+        }
+
+        if !self.variables.contains_key(name) {
+            if let Some(parent) = self.parent.as_ref() {
+                return g(parent).replace(name, value, line, col);
+            }
+            return Err(InterpreterError::VariableNotFound(name.to_string(), line, col).into());
+        }
+
+        self.variables.insert(name.clone(), value);
+
+        Ok(())
+    }
+
     fn dbg_print_vars(&self) {
         println!("Variables: {:#?}", self.variables);
         println!("Constants: {:#?}", self.constants);
@@ -354,7 +377,12 @@ impl InterpreterScope {
                             }
                         }
 
-                        scope.set_const(&TokenIdent::Type(generic.to_string(), None), Rc::new(InterpreterValue::Type(value)), line, col)?;
+                        scope.set_const(
+                            &TokenIdent::Type(generic.to_string(), None),
+                            Rc::new(InterpreterValue::Type(value)),
+                            line,
+                            col,
+                        )?;
                     }
                 }
                 let return_type = if let InterpreterType::ToGet(ref ident) = return_type {

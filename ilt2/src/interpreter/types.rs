@@ -20,6 +20,7 @@ pub enum InterpreterType {
     Bool,
     Array(Option<Box<InterpreterType>>),
     Tuple(Vec<InterpreterType>),
+    Union(Vec<InterpreterType>),
     Type,
     Void,
     Function,
@@ -38,6 +39,7 @@ impl InterpreterType {
             Self::Bool => "bool".to_string(),
             Self::Array(_) => "array".to_string(),
             Self::Tuple(_) => "tuple".to_string(),
+            Self::Union(_) => "union".to_string(),
             Self::Type => "type".to_string(),
             Self::Void => "void".to_string(),
             Self::Function => "function".to_string(),
@@ -59,6 +61,7 @@ impl InterpreterType {
                 _ => "$array".to_string(),
             },
             Self::Tuple(t) => format!("$tuple[{}]", t.iter().map(|t| t.to_string()).collect::<Vec<String>>().join(", ")),
+            Self::Union(t) => format!("$union[{}]", t.iter().map(|t| t.to_string()).collect::<Vec<String>>().join(", ")),
             Self::Type => "$type".to_string(),
             Self::Void => "$void".to_string(),
             Self::Function => "$function".to_string(),
@@ -82,6 +85,7 @@ impl InterpreterType {
                     ))))
                 }
                 Self::Tuple(_) => Ok(Self::Tuple(generics)),
+                Self::Union(_) => Ok(Self::Union(generics)),
                 _ => Err(InterpreterTypeError::InvalidGenerics(0, generics.len()).into()),
             },
             None => Ok(self.clone()),
@@ -115,6 +119,7 @@ impl InterpreterType {
                 }
                 _ => false,
             },
+            InterpreterType::Union(t) => t.iter().any(|t| t.validate(val)),
             InterpreterType::Type => matches!(val, InterpreterValue::Type(_)),
             InterpreterType::Void => matches!(val, InterpreterValue::Void),
             InterpreterType::Function => val.is_function(),
@@ -147,6 +152,8 @@ impl InterpreterType {
             (InterpreterType::Array(Some(t)), InterpreterType::Array(Some(ty))) => t.is_assignable(ty),
             (InterpreterType::Array(Some(t)), InterpreterType::Tuple(ty)) => ty.iter().all(|ty| t.is_assignable(ty)),
             (InterpreterType::Tuple(t), InterpreterType::Tuple(ty)) => t.len() == ty.len() && t.iter().zip(ty.iter()).all(|(t, ty)| t.is_assignable(ty)),
+            (InterpreterType::Union(t), InterpreterType::Void) if t.len() == 0 => true, // void and union of nothing are the same
+            (InterpreterType::Union(t), _) => t.iter().any(|t| t.is_assignable(ty)),
             (InterpreterType::Type, InterpreterType::Type) => true,
             (InterpreterType::Void, InterpreterType::Void) => true,
             (InterpreterType::Function, InterpreterType::Function) => true,
@@ -166,6 +173,7 @@ pub fn all_types() -> Vec<InterpreterType> {
         InterpreterType::Bool,
         InterpreterType::Array(None),
         InterpreterType::Tuple(vec![]),
+        InterpreterType::Union(vec![]),
         InterpreterType::Type,
         InterpreterType::Void,
         InterpreterType::Function,
