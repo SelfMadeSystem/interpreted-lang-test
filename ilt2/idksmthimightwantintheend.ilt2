@@ -30,9 +30,9 @@
 // You can add generics to functions and types. Generics are defined directly
 // after the function or type name and are prefixed with a `$` symbol like any
 // other type (because, in fact, they are types).
-(@fn add[$T] [a: $T, b: $T] $T
+(@fn add[$T: $number] [a: $T, b: $T] $T
   (+ a b))
-(@fn sum[$T] [list: $array[$T]] $T
+(@fn sum[$T: $number] [list: $array[$T]] $T
   (@ifelse (== (len list) 0)
     (as $T 0)
     (add[$T] (head list) (sum[$T] (tail list)))))
