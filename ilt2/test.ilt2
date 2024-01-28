@@ -11,9 +11,9 @@
     (@let i 0)
     (@while (< i (max (len a) (len b)))
         (@if (< i (len a))
-            (@set result (push result (get a i))))
+            (push result (get a i)))
         (@if (< i (len b))
-            (@set result (push result (get b i))))
+            (push result (get b i)))
         (@set i (+ i 1)))
     result)
 

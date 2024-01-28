@@ -102,13 +102,14 @@ impl InterpreterType {
             InterpreterType::Bool => matches!(val, InterpreterValue::Bool(_)),
             InterpreterType::Array(t) => match val {
                 InterpreterValue::Array(arr) => match t {
-                    Some(t) => arr.iter().all(|v| t.validate(v)),
+                    Some(t) => arr.borrow().iter().all(|v| t.validate(v)),
                     _ => true,
                 },
                 _ => false,
             },
             InterpreterType::Tuple(t) => match val {
                 InterpreterValue::Array(tuple) => {
+                    let tuple = tuple.borrow();
                     if tuple.len() != t.len() {
                         return false;
                     }

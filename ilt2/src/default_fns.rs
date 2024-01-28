@@ -1,4 +1,4 @@
-use std::{collections::HashMap, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use crate::{
     ast::{AstNode, AstNodeType},
@@ -596,7 +596,7 @@ fn array_functions(functions: &mut HashMap<String, NativeFn>) {
         let value = &args[0];
 
         match value.as_ref() {
-            InterpreterValue::Array(a) => Ok(Rc::new(InterpreterValue::Int(a.len() as i64))),
+            InterpreterValue::Array(a) => Ok(Rc::new(InterpreterValue::Int(a.borrow().len() as i64))),
             _ => Err(InterpreterError::InvalidFunctionCall("len".to_owned()).into()),
         }
     });
@@ -611,9 +611,9 @@ fn array_functions(functions: &mut HashMap<String, NativeFn>) {
 
         match array.as_ref() {
             InterpreterValue::Array(a) => {
-                let mut a = a.clone();
+                let mut a = a.borrow_mut();
                 a.push(value.clone());
-                Ok(Rc::new(InterpreterValue::Array(a)))
+                Ok(Rc::new(InterpreterValue::Void))
             }
             _ => Err(InterpreterError::InvalidFunctionCall("push".to_owned()).into()),
         }
@@ -628,7 +628,7 @@ fn array_functions(functions: &mut HashMap<String, NativeFn>) {
 
         match array.as_ref() {
             InterpreterValue::Array(a) => {
-                let mut a = a.clone();
+                let mut a = a.borrow_mut();
                 let value = a.pop().unwrap();
                 Ok(value)
             }
@@ -646,6 +646,7 @@ fn array_functions(functions: &mut HashMap<String, NativeFn>) {
 
         match (array.as_ref(), index.as_ref()) {
             (InterpreterValue::Array(a), InterpreterValue::Int(i)) => {
+                let a = a.borrow();
                 let i = *i as usize;
                 if i >= a.len() {
                     return Err(InterpreterError::InvalidFunctionCall("get".to_owned()).into());
@@ -667,13 +668,14 @@ fn array_functions(functions: &mut HashMap<String, NativeFn>) {
 
         match (array.as_ref(), index.as_ref()) {
             (InterpreterValue::Array(a), InterpreterValue::Int(i)) => {
+                let mut a = a.borrow_mut();
                 let i = *i as usize;
                 if i >= a.len() {
                     return Err(InterpreterError::InvalidFunctionCall("set".to_owned()).into());
                 }
-                let mut a = a.clone();
+                let prev = a[i].clone();
                 a[i] = value.clone();
-                Ok(Rc::new(InterpreterValue::Array(a)))
+                Ok(prev)
             }
             _ => Err(InterpreterError::InvalidFunctionCall("set".to_owned()).into()),
         }
@@ -689,11 +691,11 @@ fn array_functions(functions: &mut HashMap<String, NativeFn>) {
 
         match (array.as_ref(), index.as_ref()) {
             (InterpreterValue::Array(a), InterpreterValue::Int(i)) => {
+                let mut a = a.borrow_mut();
                 let i = *i as usize;
                 if i >= a.len() {
                     return Err(InterpreterError::InvalidFunctionCall("remove".to_owned()).into());
                 }
-                let mut a = a.clone();
                 let value = a.remove(i);
                 Ok(value)
             }
@@ -712,13 +714,13 @@ fn array_functions(functions: &mut HashMap<String, NativeFn>) {
 
         match (array.as_ref(), index.as_ref()) {
             (InterpreterValue::Array(a), InterpreterValue::Int(i)) => {
+                let mut a = a.borrow_mut();
                 let i = *i as usize;
                 if i > a.len() {
                     return Err(InterpreterError::InvalidFunctionCall("insert".to_owned()).into());
                 }
-                let mut a = a.clone();
                 a.insert(i, value.clone());
-                Ok(Rc::new(InterpreterValue::Array(a)))
+                Ok(Rc::new(InterpreterValue::Void))
             }
             _ => Err(InterpreterError::InvalidFunctionCall("insert".to_owned()).into()),
         }
@@ -734,7 +736,7 @@ fn array_functions(functions: &mut HashMap<String, NativeFn>) {
 
         match array.as_ref() {
             InterpreterValue::Array(a) => Ok(Rc::new(InterpreterValue::Bool(
-                a.iter().any(|v| v == value),
+                a.borrow().iter().any(|v| v == value),
             ))),
             _ => Err(InterpreterError::InvalidFunctionCall("has".to_owned()).into()),
         }
@@ -749,6 +751,7 @@ fn array_functions(functions: &mut HashMap<String, NativeFn>) {
 
         match array.as_ref() {
             InterpreterValue::Array(a) => {
+                let a = a.borrow();
                 if a.len() == 0 {
                     return Err(InterpreterError::InvalidFunctionCall("head".to_owned()).into());
                 }
@@ -767,12 +770,13 @@ fn array_functions(functions: &mut HashMap<String, NativeFn>) {
 
         match array.as_ref() {
             InterpreterValue::Array(a) => {
+                let a = a.borrow();
                 if a.len() == 0 {
                     return Err(InterpreterError::InvalidFunctionCall("tail".to_owned()).into());
                 }
-                let mut a = a.clone();
-                a.remove(0);
-                Ok(Rc::new(InterpreterValue::Array(a)))
+                Ok(Rc::new(InterpreterValue::Array(RefCell::new(
+                    a[1..].to_vec(),
+                ))))
             }
             _ => Err(InterpreterError::InvalidFunctionCall("tail".to_owned()).into()),
         }

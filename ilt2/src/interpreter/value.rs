@@ -1,4 +1,4 @@
-use std::rc::Rc;
+use std::{cell::RefCell, rc::Rc};
 
 use anyhow::{Error, Result};
 
@@ -15,7 +15,7 @@ pub enum InterpreterValue {
     Float(f64),
     String(String),
     Bool(bool),
-    Array(Vec<Rc<InterpreterValue>>),
+    Array(RefCell<Vec<Rc<InterpreterValue>>>),
     Type(InterpreterType),
     Void,
     Function {
@@ -50,7 +50,7 @@ impl InterpreterValue {
             Self::String(_) => InterpreterType::String,
             Self::Bool(_) => InterpreterType::Bool,
             Self::Array(vals) => {
-                InterpreterType::Tuple(vals.iter().map(|v| v.get_type()).collect())
+                InterpreterType::Tuple(vals.borrow().iter().map(|v| v.get_type()).collect())
             }
             Self::Type(_) => InterpreterType::Type,
             Self::Void => InterpreterType::Void,
@@ -136,10 +136,10 @@ impl InterpreterValue {
                 Self::Array(vals) => {
                     if let Some(aty) = aty {
                         let mut new_vals = Vec::new();
-                        for val in vals.iter() {
+                        for val in vals.borrow().iter() {
                             new_vals.push(Rc::new(val.as_type(aty)?));
                         }
-                        Ok(Self::Array(new_vals))
+                        Ok(Self::Array(RefCell::new(new_vals)))
                     } else {
                         Ok(self.clone())
                     }
@@ -152,7 +152,7 @@ impl InterpreterValue {
             },
             InterpreterType::Tuple(tys) => match self {
                 Self::Array(vals) => {
-                    if vals.len() != tys.len() {
+                    if vals.borrow().len() != tys.len() {
                         return Err(InterpreterError::InvalidTypeCast(
                             self.get_type().to_string(),
                             ty.to_string(),
@@ -160,10 +160,10 @@ impl InterpreterValue {
                         .into());
                     }
                     let mut new_vals = Vec::new();
-                    for (val, ty) in vals.iter().zip(tys.iter()) {
+                    for (val, ty) in vals.borrow().iter().zip(tys.iter()) {
                         new_vals.push(Rc::new(val.as_type(ty)?));
                     }
-                    Ok(Self::Array(new_vals))
+                    Ok(Self::Array(RefCell::new(new_vals)))
                 }
                 _ => Err(InterpreterError::InvalidTypeCast(
                     self.get_type().to_string(),
@@ -233,7 +233,7 @@ impl InterpreterValue {
             Self::Bool(b) => b.to_string(),
             Self::Array(a) => format!(
                 "[{}]",
-                a.iter()
+                a.borrow().iter()
                     .map(|v| v.to_formatted_string())
                     .collect::<Vec<_>>()
                     .join(", ")
@@ -265,7 +265,7 @@ impl TryFrom<AstNode> for InterpreterValue {
                 for value in value.iter() {
                     array.push(Rc::new((value.clone()).try_into()?));
                 }
-                Ok(Self::Array(array))
+                Ok(Self::Array(RefCell::new(array)))
             }
             _ => Err(
                 InterpreterError::InvalidConstValue(value.clone(), value.line, value.col).into(),

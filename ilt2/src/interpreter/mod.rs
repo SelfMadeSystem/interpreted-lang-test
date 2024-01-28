@@ -1,5 +1,5 @@
 use anyhow::{anyhow, Result};
-use std::{collections::HashMap, rc::Rc};
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 mod types;
 mod value;
 pub use types::InterpreterType;
@@ -283,7 +283,7 @@ impl InterpreterScope {
                 for value in value.iter() {
                     array.push(self.evaluate(value)?);
                 }
-                Ok(Rc::new(InterpreterValue::Array(array)))
+                Ok(Rc::new(InterpreterValue::Array(RefCell::new(array))))
             }
             AstNodeType::Call { name, params } => {
                 let function = self.get(&name, node.line, node.col);
