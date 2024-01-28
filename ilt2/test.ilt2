@@ -1,6 +1,7 @@
+(@struct $Point x: $float y: $float)
+
 (@main
-    (@let my_dict (@dict a: 1,
-                         b: 2,
-                         c: 3))
-    (print my_dict) // since dicts are unordered, the order of the entries may vary
-    (print (gettype my_dict)))
+    (@let my_point (@dict x: -.1 y: 2.46))
+    (print my_point)
+    (print (istype $Point my_point))
+    (print (gettype my_point)))

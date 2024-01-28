@@ -1027,6 +1027,16 @@ pub fn native_macros() -> HashMap<String, NativeMacro> {
         Ok(result)
     });
 
+    // TODO: Add type validation
+    // e.g.
+    // when `(@struct $Point x: $int, y: $int)` is defined,
+    // `(@dict[$Point] x: 1, y: 2)` should be valid,
+    // but `(@dict[$Point] x: 1, y: "2")` should be invalid
+    //
+    // or with generics
+    // `(@struct[$T] $Point x: $T, y: $T)`
+    // `(@dict[$Point[$int]] x: 1, y: 2)` should be valid
+    // `(@dict[$Point[$int]] x: 1, y: "2")` should be invalid
     macros.insert("dict".to_string(), |scope, args, _, _| {
         if args.len() % 2 != 0 {
             return Err(InterpreterError::InvalidMacroCall("dict".to_owned()).into());
@@ -1035,17 +1045,70 @@ pub fn native_macros() -> HashMap<String, NativeMacro> {
         let mut dict = HashMap::new();
 
         for i in (0..args.len()).step_by(2) {
-            let key = match &args[i].ty {
-                AstNodeType::Ident(s) => s,
+            let s = match &args[i].ty {
+                AstNodeType::Ident(TokenIdent::Ident(s, None)) => s,
                 _ => return Err(InterpreterError::InvalidMacroCall("dict".to_owned()).into()),
             };
 
             let value = scope.evaluate(&args[i + 1])?;
 
-            dict.insert(key.name().to_owned(), value);
+            dict.insert(s.to_owned(), value);
         }
 
         Ok(Rc::new(InterpreterValue::Dict(RefCell::new(dict))))
+    });
+
+    // creates a struct *type*, not an instance. use `dict` to create an instance
+    // TODO: Support generics. e.g. `(@struct[$T] $Point x: $T, y: $T)`
+    macros.insert("struct".to_string(), |scope, args, line, col| {
+        if args.len() % 2 == 0 {
+            return Err(InterpreterError::InvalidMacroCall("struct".to_owned()).into());
+        }
+
+        let name = match &args[0].ty {
+            AstNodeType::Ident(TokenIdent::Type(s, None)) => s,
+            _ => return Err(InterpreterError::InvalidMacroCall("struct".to_owned()).into()),
+        };
+
+        let mut fields = Vec::new();
+
+        for i in (1..args.len()).step_by(2) {
+            let s = match &args[i].ty {
+                AstNodeType::Ident(TokenIdent::Ident(s, None)) => s,
+                _ => return Err(InterpreterError::InvalidMacroCall("struct".to_owned()).into()),
+            };
+
+            let value = match &args[i + 1].ty {
+                AstNodeType::Ident(t) if matches!(t, TokenIdent::Type(..)) => {
+                    match scope.get(t, line, col) {
+                        Ok(rc) => match rc.as_ref() {
+                            InterpreterValue::Type(t) => {
+                                fields.push((s.to_owned(), t.clone()));
+                                continue;
+                            }
+                            _ => {
+                                return Err(InterpreterError::InvalidMacroCall(
+                                    "struct".to_owned(),
+                                )
+                                .into())
+                            }
+                        },
+                        Err(_) => InterpreterType::ToGet(t.clone()),
+                    }
+                }
+                _ => return Err(InterpreterError::InvalidMacroCall("struct".to_owned()).into()),
+            };
+
+            fields.push((s.to_owned(), value));
+        }
+
+        let struct_type = Rc::new(InterpreterValue::Type(InterpreterType::Struct(
+            fields,
+        )));
+
+        scope.set_const(&TokenIdent::Type(name.to_owned(), None), struct_type.clone(), line, col)?;
+
+        Ok(struct_type)
     });
 
     macros

@@ -23,6 +23,8 @@ pub enum InterpreterType {
     Union(Vec<InterpreterType>),
     /// dict key is always string
     Dict(Box<InterpreterType>),
+    // same as dict, but key-value pairs are fixed
+    Struct(Vec<(String, InterpreterType)>),
     Type,
     Void,
     Function,
@@ -43,6 +45,7 @@ impl InterpreterType {
             Self::Tuple(_) => "tuple".to_string(),
             Self::Union(_) => "union".to_string(),
             Self::Dict(_) => "dict".to_string(),
+            Self::Struct(_) => "struct".to_string(),
             Self::Type => "type".to_string(),
             Self::Void => "void".to_string(),
             Self::Function => "function".to_string(),
@@ -78,6 +81,13 @@ impl InterpreterType {
                     .join(", ")
             ),
             Self::Dict(t) => format!("$dict[{}]", t.to_string()),
+            Self::Struct(t) => format!(
+                "$struct[{}]",
+                t.iter()
+                    .map(|(k, v)| format!("{}: {}", k.to_string(), v.to_string()))
+                    .collect::<Vec<String>>()
+                    .join(", ")
+            ),
             Self::Type => "$type".to_string(),
             Self::Void => "$void".to_string(),
             Self::Function => "$function".to_string(),
@@ -135,6 +145,18 @@ impl InterpreterType {
                 InterpreterValue::Dict(dict) => {
                     let dict = dict.borrow();
                     dict.iter().all(|(_, v)| t.validate(v))
+                }
+                _ => false,
+            },
+            InterpreterType::Struct(t) => match val {
+                InterpreterValue::Dict(dict) => {
+                    let dict = dict.borrow();
+                    dict.iter().all(|(k, v)| {
+                        t.iter()
+                            .find(|(k1, _)| k == k1)
+                            .map(|(_, t)| t.validate(v))
+                            .unwrap_or(false)
+                    })
                 }
                 _ => false,
             },
