@@ -8,6 +8,8 @@ use thiserror::Error;
 pub enum InterpreterTypeError {
     #[error("Invalid generic type parameters count. Expected {0} got {1}")]
     InvalidGenerics(usize, usize),
+    #[error("Don't use $struct[...] directly. To create a struct type, use the @struct macro")]
+    DontUseStruct,
 }
 
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
@@ -109,6 +111,13 @@ impl InterpreterType {
                 }
                 Self::Tuple(_) => Ok(Self::Tuple(generics)),
                 Self::Union(_) => Ok(Self::Union(generics)),
+                Self::Dict(_) => {
+                    if generics.len() != 1 {
+                        return Err(InterpreterTypeError::InvalidGenerics(1, generics.len()).into());
+                    }
+                    Ok(Self::Dict(Box::new(generics.first().unwrap().clone())))
+                }
+                Self::Struct(_) => Err(InterpreterTypeError::DontUseStruct.into()),
                 _ => Err(InterpreterTypeError::InvalidGenerics(0, generics.len()).into()),
             },
             None => Ok(self.clone()),
@@ -225,6 +234,8 @@ pub fn all_types() -> Vec<InterpreterType> {
         InterpreterType::Array(None),
         InterpreterType::Tuple(vec![]),
         InterpreterType::Union(vec![]),
+        InterpreterType::Dict(Box::new(InterpreterType::Any)),
+        InterpreterType::Struct(vec![]),
         InterpreterType::Type,
         InterpreterType::Void,
         InterpreterType::Function,
