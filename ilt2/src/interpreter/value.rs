@@ -1,12 +1,12 @@
 use std::rc::Rc;
 
-use anyhow::Error;
+use anyhow::{Error, Result};
 
 use crate::ast::{AstNode, AstNodeType};
 
 use super::{types::InterpreterType, InterpreterError, NativeFn, NativeMacro};
 
-#[derive(Debug, Clone)]
+#[derive(Debug, Clone, PartialEq)]
 pub enum InterpreterValue {
     Int(i64),
     Float(f64),
@@ -80,6 +80,126 @@ impl InterpreterValue {
         match self {
             Self::Macro { .. } | Self::NativeMacro { .. } => true,
             _ => false,
+        }
+    }
+
+    pub fn as_type(&self, ty: &InterpreterType) -> Result<Self> {
+        match ty {
+            InterpreterType::Any => Ok(self.clone()),
+            InterpreterType::ToGet(t) => {
+                eprintln!("Warning: using ToGet type {:?}", t);
+                Ok(self.clone())
+            }
+            InterpreterType::Number => match self {
+                Self::Int(i) => Ok(Self::Int(*i)),
+                Self::Float(f) => Ok(Self::Float(*f)),
+                Self::String(s) => Ok(Self::Float(s.parse::<f64>()?)),
+                _ => Err(InterpreterError::InvalidTypeCast(
+                    self.get_type().to_string(),
+                    ty.to_string(),
+                )
+                .into()),
+            },
+            InterpreterType::Int => match self {
+                Self::Int(i) => Ok(Self::Int(*i)),
+                Self::Float(f) => Ok(Self::Int(*f as i64)),
+                Self::String(s) => Ok(Self::Int(s.parse::<i64>()?)),
+                _ => Err(InterpreterError::InvalidTypeCast(
+                    self.get_type().to_string(),
+                    ty.to_string(),
+                )
+                .into()),
+            },
+            InterpreterType::Float => match self {
+                Self::Int(i) => Ok(Self::Float(*i as f64)),
+                Self::Float(f) => Ok(Self::Float(*f)),
+                Self::String(s) => Ok(Self::Float(s.parse::<f64>()?)),
+                _ => Err(InterpreterError::InvalidTypeCast(
+                    self.get_type().to_string(),
+                    ty.to_string(),
+                )
+                .into()),
+            },
+            InterpreterType::String => Ok(Self::String(self.to_string())),
+            InterpreterType::Bool => match self {
+                Self::Bool(b) => Ok(Self::Bool(*b)),
+                _ => Err(InterpreterError::InvalidTypeCast(
+                    self.get_type().to_string(),
+                    ty.to_string(),
+                )
+                .into()),
+            },
+            InterpreterType::Array(aty) => match self {
+                Self::Array(vals) => {
+                    if let Some(aty) = aty {
+                        let mut new_vals = Vec::new();
+                        for val in vals.iter() {
+                            new_vals.push(Rc::new(val.as_type(aty)?));
+                        }
+                        Ok(Self::Array(new_vals))
+                    } else {
+                        Ok(self.clone())
+                    }
+                }
+                _ => Err(InterpreterError::InvalidTypeCast(
+                    self.get_type().to_string(),
+                    ty.to_string(),
+                )
+                .into()),
+            },
+            InterpreterType::Tuple(tys) => match self {
+                Self::Array(vals) => {
+                    if vals.len() != tys.len() {
+                        return Err(InterpreterError::InvalidTypeCast(
+                            self.get_type().to_string(),
+                            ty.to_string(),
+                        )
+                        .into());
+                    }
+                    let mut new_vals = Vec::new();
+                    for (val, ty) in vals.iter().zip(tys.iter()) {
+                        new_vals.push(Rc::new(val.as_type(ty)?));
+                    }
+                    Ok(Self::Array(new_vals))
+                }
+                _ => Err(InterpreterError::InvalidTypeCast(
+                    self.get_type().to_string(),
+                    ty.to_string(),
+                )
+                .into()),
+            },
+            InterpreterType::Type => match self {
+                Self::Type(ty) => Ok(Self::Type(ty.clone())),
+                _ => Err(InterpreterError::InvalidTypeCast(
+                    self.get_type().to_string(),
+                    ty.to_string(),
+                )
+                .into()),
+            },
+            InterpreterType::Void => match self {
+                Self::Void => Ok(Self::Void),
+                _ => Err(InterpreterError::InvalidTypeCast(
+                    self.get_type().to_string(),
+                    ty.to_string(),
+                )
+                .into()),
+            },
+            InterpreterType::Function => match self {
+                Self::Function { .. } | Self::NativeFunction { .. } => Ok(self.clone()),
+                _ => Err(InterpreterError::InvalidTypeCast(
+                    self.get_type().to_string(),
+                    ty.to_string(),
+                )
+                .into()),
+            },
+            InterpreterType::Macro => match self {
+                Self::Macro { .. } | Self::NativeMacro { .. } => Ok(self.clone()),
+                _ => Err(InterpreterError::InvalidTypeCast(
+                    self.get_type().to_string(),
+                    ty.to_string(),
+                )
+                .into()),
+            },
         }
     }
 

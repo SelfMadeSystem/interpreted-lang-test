@@ -34,6 +34,8 @@ pub enum InterpreterError {
     InvalidTypeArgNative(String, usize, String, String),
     #[error("Invalid return type {0} for {1}. Expected type: {2}")]
     InvalidReturnType(String, String, String),
+    #[error("Invalid type cast from {0} to {1}")]
+    InvalidTypeCast(String, String),
 }
 
 pub type NativeFn = fn(
