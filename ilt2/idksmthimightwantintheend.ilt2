@@ -37,26 +37,6 @@
     (as $T 0)
     (add[$T] (head list) (sum[$T] (tail list)))))
 
-// You can use the `@macro` macro to define a macro.
-// The first argument is the macro name, the second is the argument list which
-// is always the scope and a list of AST nodes, the third is the return type,
-// and the fourth is the macro body. If the return type is `$ast`, the macro
-// will return the AST node as-is. Otherwise, the macro will return the result
-// of evaluating the AST node.
-//
-// You can use the `eval` function to evaluate an AST node in a given scope.
-//
-// The following is an example of how the `@assert` macro is implemented.
-//
-// Note: the actual implementation of the `@assert` macro is slightly different
-// because it can handle multiple arguments.
-/* (@macro assert [scope: $scope, args: $list[$ast]] $ast
-  (@ifelse (== (len args) 1)
-    (@ifelse (eval scope (head args))
-      (print "Assertion passed.")
-      (print "Assertion failed."))
-    (print "Assertion failed."))) */
-
 // You can use the `@main` macro to define the entry point of your program.
 (@main
   (print (greet "World"))
