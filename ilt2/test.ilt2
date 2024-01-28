@@ -1,1 +1,8 @@
-(@main (print (istype $array[$int] [2, 3, 4])))
+(@fn sum[$T: $number] [arr: $array[$T]]: $T
+    (@ifelse (== (len arr) 0)
+        (as $T 0)
+        (+ (head arr) (sum[$A, $T] (tail arr)))))
+
+(@main
+    (print (sum[$int] [1 2 3 4 5]))
+    (print (sum[$string] ["a" "b" "c" "d" "e"])))

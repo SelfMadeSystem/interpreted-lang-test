@@ -838,7 +838,7 @@ pub fn native_macros() -> HashMap<String, NativeMacro> {
             name: name.name().to_owned(),
             generics: name
                 .get_generics()
-                .map(|v| v.iter().map(|v| v.ident.name().to_owned()).collect()),
+                .map(|v| v.iter().map(|v| (v.ident.name().to_owned(), v.type_ident.to_owned())).collect()),
             params,
             return_type,
             body,

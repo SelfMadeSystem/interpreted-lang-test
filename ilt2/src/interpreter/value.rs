@@ -2,7 +2,10 @@ use std::rc::Rc;
 
 use anyhow::{Error, Result};
 
-use crate::ast::{AstNode, AstNodeType};
+use crate::{
+    ast::{AstNode, AstNodeType},
+    token::TokenIdent,
+};
 
 use super::{types::InterpreterType, InterpreterError, NativeFn, NativeMacro};
 
@@ -17,7 +20,7 @@ pub enum InterpreterValue {
     Void,
     Function {
         name: String,
-        generics: Option<Vec<String>>,
+        generics: Option<Vec<(String, Option<TokenIdent>)>>,
         params: Vec<(String, InterpreterType)>,
         return_type: InterpreterType,
         body: Vec<AstNode>,

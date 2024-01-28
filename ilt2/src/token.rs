@@ -10,6 +10,7 @@ pub struct Token {
 #[derive(Debug, PartialEq, Eq, PartialOrd, Ord, Clone, Hash)]
 pub struct GenericIdent {
     pub ident: TokenIdent,
+    pub type_ident: Option<TokenIdent>,
     pub line: usize,
     pub col: usize,
 }
@@ -65,6 +66,14 @@ impl TokenIdent {
             ),
         }
     }
+
+    pub fn new_ident(ident: &str, generics: Option<Vec<GenericIdent>>) -> Result<Self> {
+        Ok(match ident {
+            c if c.starts_with('@') => Self::Macro(c[1..].to_owned(), generics),
+            c if c.starts_with('$') => Self::Type(c[1..].to_owned(), generics),
+            c => Self::Ident(c.to_owned(), generics),
+        })
+    }
 }
 
 #[derive(Debug, PartialEq, Clone)]
@@ -94,10 +103,31 @@ impl TokenType {
     pub fn new_ident(ident: &str, generics: Option<Vec<Token>>) -> Result<Self> {
         let generics = if let Some(generics) = generics {
             let mut g = Vec::new();
-            for token in generics {
+            let mut iter = generics.into_iter().peekable();
+            while let Some(token) = iter.next() {
+                let type_ident = if let Some(token) = iter.peek() {
+                    match token.ty {
+                        TokenType::Colon => {
+                            iter.next();
+                            if let Some(Token {
+                                ty: TokenType::Ident(ident),
+                                ..
+                            }) = iter.next()
+                            {
+                                Some(ident)
+                            } else {
+                                return Err(anyhow!("Invalid generic type"));
+                            }
+                        }
+                        _ => None,
+                    }
+                } else {
+                    None
+                };
                 match token.ty {
                     TokenType::Ident(ident) => g.push(GenericIdent {
                         ident,
+                        type_ident,
                         line: token.line,
                         col: token.col,
                     }),
@@ -114,9 +144,7 @@ impl TokenType {
         Ok(match ident {
             "true" => Self::Boolean(true),
             "false" => Self::Boolean(false),
-            c if c.starts_with('@') => Self::Ident(TokenIdent::Macro(c[1..].to_owned(), generics)),
-            c if c.starts_with('$') => Self::Ident(TokenIdent::Type(c[1..].to_owned(), generics)),
-            c => Self::Ident(TokenIdent::Ident(c.to_owned(), generics)),
+            c => Self::Ident(TokenIdent::new_ident(c, generics)?),
         })
     }
 }

@@ -32,6 +32,8 @@ pub enum InterpreterError {
     InvalidMacroCall(String),
     #[error("Invalid type {0} at argument {1} for {2}. Expected type: {3}")]
     InvalidTypeArgNative(String, usize, String, String),
+    #[error("Invalid generic type {0} at argument {1} for {2}. Expected type: {3}")]
+    InvalidTypeArgGeneric(String, usize, String, String),
     #[error("Invalid return type {0} for {1}. Expected type: {2}")]
     InvalidReturnType(String, String, String),
     #[error("Invalid type cast from {0} to {1}")]
@@ -162,12 +164,31 @@ impl InterpreterScope {
                 if let Some(gen) = name.get_generics() {
                     let mut gens = Vec::new();
                     for gen in gen.iter() {
-                        gens.push(match self.get(&gen.ident, line, col)?.as_ref() {
+                        let ty = match self.get(&gen.ident, line, col)?.as_ref() {
                             InterpreterValue::Type(t) => t.clone(),
                             _ => {
                                 return Err(anyhow!("ayo"));
                             }
-                        });
+                        };
+                        if let Some(typ) = &gen.type_ident {
+                            let typ = match self.get(typ, line, col)?.as_ref() {
+                                InterpreterValue::Type(t) => t.clone(),
+                                _ => {
+                                    return Err(anyhow!("ayo"));
+                                }
+                            };
+                            if typ.is_assignable(&ty) {
+                                gens.push(typ);
+                            } else {
+                                return Err(InterpreterError::InvalidTypeCast(
+                                    ty.to_string(),
+                                    typ.to_string(),
+                                )
+                                .into());
+                            }
+                        } else {
+                            gens.push(ty);
+                        }
                     }
                     Some(gens)
                 } else {
@@ -176,6 +197,18 @@ impl InterpreterScope {
             })?)));
         }
         Ok(value)
+    }
+
+    pub fn get_type(&self, name: &TokenIdent, line: usize, col: usize) -> Result<InterpreterType> {
+        let value = self.get(name, line, col)?;
+        match value.as_ref() {
+            InterpreterValue::Type(t) => Ok(t.clone()),
+            _ => Err(InterpreterError::InvalidTypeCast(
+                value.get_type().to_string(),
+                "Type".to_string(),
+            )
+            .into()),
+        }
     }
 
     pub fn set(
@@ -299,13 +332,29 @@ impl InterpreterScope {
                         return Err(InterpreterError::InvalidFunctionCall(name.to_owned()).into());
                     }
 
-                    for (generic, value) in fn_generics.as_ref().unwrap().iter().zip(generics) {
-                        scope.set_const(
-                            &TokenIdent::Type(generic.to_string(), None),
-                            scope.get(&value.ident, line, col)?,
-                            line,
-                            col,
-                        )?;
+                    for (i, ((generic, gen_constraint_type), value)) in fn_generics
+                        .as_ref()
+                        .unwrap()
+                        .iter()
+                        .zip(generics)
+                        .enumerate()
+                    {
+                        let value = scope.get_type(&value.ident, line, col)?;
+                        if let Some(gen_constraint_type) = gen_constraint_type {
+                            let gen_constraint_type =
+                                scope.get_type(&gen_constraint_type, line, col)?;
+                            if !gen_constraint_type.is_assignable(&value) {
+                                return Err(InterpreterError::InvalidTypeArgGeneric(
+                                    value.to_string(),
+                                    i,
+                                    name.to_string(),
+                                    gen_constraint_type.to_string(),
+                                )
+                                .into());
+                            }
+                        }
+
+                        scope.set_const(&TokenIdent::Type(generic.to_string(), None), Rc::new(InterpreterValue::Type(value)), line, col)?;
                     }
                 }
                 let return_type = if let InterpreterType::ToGet(ref ident) = return_type {
