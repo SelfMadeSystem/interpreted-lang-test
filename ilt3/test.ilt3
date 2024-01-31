@@ -1,0 +1,17 @@
+sum vec
+    assign sum 0
+  loop
+    call_assign is_empty array_is_empty vec
+    jump_if is_empty end
+    call_assign head array_head vec
+    call_assign sum float_add sum head
+    call_assign vec array_tail vec
+    jump loop
+  end
+    return sum
+
+main
+    assign vec [ 1 2 3 4 5 ]
+    call_assign vec_sum sum vec
+    call print vec_sum
+    return void

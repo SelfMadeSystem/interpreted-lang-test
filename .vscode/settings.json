@@ -2,5 +2,6 @@
     "rust-analyzer.linkedProjects": [
         "./ilt1/Cargo.toml",
         "./ilt2/Cargo.toml",
+        "./ilt3/Cargo.toml",
     ]
 }
