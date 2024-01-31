@@ -1,4 +1,4 @@
-// TODO: I was too lazy to add float/int distinction and struct parsing
+// TODO: Add struct parsing
 
 use std::{iter::Peekable, vec::IntoIter};
 
@@ -99,8 +99,10 @@ impl InstructionType {
 #[derive(Debug, Clone)]
 pub enum InstructionTokenType {
     Identifier(String),
+    /// Starts with a digit, or minus sign
+    Int(i64),
     /// Starts with a digit, period, or minus sign
-    Number(f64),
+    Float(f64),
     /// Exactly `true` or `false`
     Boolean(bool),
     /// Starts and ends with a double quote
@@ -122,7 +124,8 @@ impl InstructionToken {
     pub fn to_string(&self) -> String {
         match &self.ty {
             InstructionTokenType::Identifier(s) => s.clone(),
-            InstructionTokenType::Number(n) => n.to_string(),
+            InstructionTokenType::Int(n) => n.to_string(),
+            InstructionTokenType::Float(f) => f.to_string(),
             InstructionTokenType::Boolean(b) => b.to_string(),
             InstructionTokenType::String(s) => format!("\"{}\"", s),
             InstructionTokenType::Array(tokens) => {
@@ -352,21 +355,34 @@ impl Lexer {
 
     fn parse_number(&mut self) -> Result<InstructionTokenType> {
         let mut number = String::new();
+        let mut float = false;
 
         while let Some(c) = self.peek() {
             if c.is_whitespace() {
                 break;
+            }
+            if *c == '.' {
+                if float {
+                    return Err(self.new_unexpected_char('.'));
+                }
+                float = true;
             }
 
             number.push(*c);
             self.next();
         }
 
-        let number = number
-            .parse()
-            .map_err(|_| LexError::InvalidNumber(number, self.line, self.col))?;
-
-        Ok(InstructionTokenType::Number(number))
+        if float {
+            number
+                .parse::<f64>()
+                .map_err(|_| LexError::InvalidNumber(number.clone(), self.line, self.col).into())
+                .map(InstructionTokenType::Float)
+        } else {
+            number
+                .parse::<i64>()
+                .map_err(|_| LexError::InvalidNumber(number.clone(), self.line, self.col).into())
+                .map(InstructionTokenType::Int)
+        }
     }
 
     fn parse_string(&mut self) -> Result<InstructionTokenType> {

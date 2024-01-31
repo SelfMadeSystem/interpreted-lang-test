@@ -110,7 +110,8 @@ impl Value {
         let mut array = Vec::new();
         for token in a {
             array.push(match &token.ty {
-                InstructionTokenType::Number(n) => Value::Float(*n),
+                InstructionTokenType::Int(n) => Value::Int(*n),
+                InstructionTokenType::Float(f) => Value::Float(*f),
                 InstructionTokenType::Boolean(b) => Value::Bool(*b),
                 InstructionTokenType::String(s) => Value::String(s.clone()),
                 InstructionTokenType::Array(a) => Value::from_lexed_array(a)?,

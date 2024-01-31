@@ -1,17 +1,17 @@
-sum vec
-    assign sum 0
+count_to n
+    assign c 0
   loop
-    call_assign is_empty array_is_empty vec
-    jump_if is_empty end
-    call_assign head array_head vec
-    call_assign sum float_add sum head
-    call_assign vec array_tail vec
+    call_assign is_eq int_eq c n
+    jump_if is_eq end
+    call_assign c int_add c 1
     jump loop
   end
-    return sum
+    return void
 
 main
-    assign vec [ 1 2 3 4 5 ]
-    call_assign vec_sum sum vec
-    call print vec_sum
+    call_assign start_time time
+    call count_to 1000000
+    call_assign end_time time
+    call_assign elapsed_time float_sub end_time start_time
+    call print elapsed_time
     return void
