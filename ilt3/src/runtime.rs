@@ -27,20 +27,7 @@ pub enum RuntimeException {
 pub struct Runtime {
     pub fn_name: String,
     pub scope: Rc<RefCell<Scope>>,
-    pub labels: HashMap<String, usize>,
     pub ir: Vec<Ir>,
-}
-
-fn find_labels(ir: &Vec<Ir>) -> HashMap<String, usize> {
-    let mut labels = HashMap::new();
-
-    for (i, ir) in ir.iter().enumerate() {
-        if let Ir::Label { name } = ir {
-            labels.insert(name.clone(), i);
-        }
-    }
-
-    labels
 }
 
 impl Runtime {
@@ -51,22 +38,22 @@ impl Runtime {
                 args: function.args,
                 body: ValueFunctionBody::Ir(function.body),
             });
-            scope.set(function.name, value);
+            scope.set_named(function.name, Rc::new(RefCell::new(value)));
         }
 
         let ir = scope
-            .get("main")
-            .unwrap()
+            .get_named("main")
+            .expect("No main function")
+            .borrow()
             .as_function()
-            .unwrap()
+            .expect("main is not a function")
             .body
             .as_ir()
-            .unwrap()
+            .expect("main is not an IR function")
             .clone();
         Self {
             fn_name: "main".to_string(),
             scope: Rc::new(RefCell::new(scope)),
-            labels: HashMap::new(),
             ir,
         }
     }
@@ -75,7 +62,6 @@ impl Runtime {
         Self {
             fn_name: name.to_owned(),
             scope,
-            labels: find_labels(&ir),
             ir,
         }
     }
@@ -84,26 +70,38 @@ impl Runtime {
         add_builtin_functions(&mut self.scope.borrow_mut());
     }
 
-    pub fn get(&self, name: &str) -> Result<Value> {
-        if let Some(value) = self.scope.borrow().get(name) {
+    pub fn get_named(&self, name: &str) -> Result<Rc<RefCell<Value>>> {
+        if let Some(value) = self.scope.borrow().get_named(name) {
             return Ok(value);
         }
 
         Err(RuntimeException::UndefinedVariable(name.to_string()).into())
     }
 
-    pub fn get_ir_value(&self, value: &IrValue) -> Result<Value> {
+    pub fn get_local(&self, index: usize) -> Result<Rc<RefCell<Value>>> {
+        if let Some(value) = self.scope.borrow().get_local(index) {
+            return Ok(value);
+        }
+
+        Err(RuntimeException::UndefinedVariable(index.to_string()).into())
+    }
+
+    pub fn get_ir_value(&self, value: &IrValue) -> Result<Rc<RefCell<Value>>> {
         match value {
-            IrValue::Value(value) => Ok(value.clone()),
-            IrValue::Var(name) => self.get(name),
+            IrValue::Value(value) => Ok(Rc::new(RefCell::new(value.clone()))),
+            IrValue::Var(index) => self.get_local(*index),
         }
     }
 
-    pub fn set(&mut self, name: String, value: Value) {
-        self.scope.borrow_mut().set(name, value);
+    pub fn set_named(&mut self, name: String, value: Rc<RefCell<Value>>) {
+        self.scope.borrow_mut().set_named(name, value);
     }
 
-    pub fn run(&mut self) -> Result<Value> {
+    pub fn set_local(&mut self, index: usize, value: Rc<RefCell<Value>>) {
+        self.scope.borrow_mut().set_local(index, value);
+    }
+
+    pub fn run(&mut self) -> Result<Rc<RefCell<Value>>> {
         let mut ip = 0; // Instruction pointer
 
         loop {
@@ -119,7 +117,8 @@ impl Runtime {
                         values.push(self.get_ir_value(arg)?);
                     }
 
-                    let function = self.get(name)?;
+                    let function = self.get_named(name)?;
+                    let function = function.borrow();
                     let function = function
                         .as_function()
                         .ok_or(RuntimeException::WrongType("function".to_string()))?;
@@ -127,8 +126,8 @@ impl Runtime {
                     match function.body {
                         ValueFunctionBody::Ir(ref ir) => {
                             let mut scope = Scope::new_child(self.scope.clone());
-                            for (i, arg) in function.args.iter().enumerate() {
-                                scope.set(arg.clone(), values[i].clone());
+                            for i in 0..function.args {
+                                scope.set_local(i, values[i].clone());
                             }
 
                             let mut runtime =
@@ -147,7 +146,8 @@ impl Runtime {
                         values.push(self.get_ir_value(arg)?);
                     }
 
-                    let function = self.get(name)?;
+                    let function = self.get_named(name)?;
+                    let function = function.borrow();
                     let function = function
                         .as_function()
                         .ok_or(RuntimeException::WrongType("function".to_string()))?;
@@ -155,49 +155,43 @@ impl Runtime {
                     match function.body {
                         ValueFunctionBody::Ir(ref ir) => {
                             let mut scope = Scope::new_child(self.scope.clone());
-                            for (i, arg) in function.args.iter().enumerate() {
-                                scope.set(arg.clone(), values[i].clone());
+                            for i in 0..function.args {
+                                scope.set_local(i, values[i].clone());
                             }
 
                             let mut runtime =
                                 Runtime::new(name, Rc::new(RefCell::new(scope)), ir.clone());
-                            let result = runtime.run()?;
-                            self.set(var.clone(), result);
+                            let value = runtime.run()?;
+                            self.set_local(*var, value);
                         }
                         ValueFunctionBody::Native(ref native) => {
-                            let result = native(values)?;
-                            self.set(var.clone(), result);
+                            let value = native(values)?;
+                            self.set_local(*var, value);
                         }
                     }
                 }
                 Ir::Assign { var, value } => {
                     let value = self.get_ir_value(value)?;
-                    self.set(var.clone(), value);
+                    self.set_local(*var, value);
                 }
-                Ir::Jump { label } => {
-                    ip = *self
-                        .labels
-                        .get(label)
-                        .ok_or(RuntimeException::UndefinedLabel(label.clone()))?;
+                Ir::Jump { line } => {
+                    ip = *line;
                     continue;
                 }
-                Ir::JumpIf { label, cond } => {
+                Ir::JumpIf { line, cond } => {
                     let cond = self.get_ir_value(cond)?;
                     if cond
+                        .borrow()
                         .as_bool()
                         .ok_or(RuntimeException::WrongType("bool".to_string()))?
                     {
-                        ip = *self
-                            .labels
-                            .get(label)
-                            .ok_or(RuntimeException::UndefinedLabel(label.clone()))?;
+                        ip = *line;
                         continue;
                     }
                 }
                 Ir::Return { value } => {
                     return Ok(self.get_ir_value(value)?);
                 }
-                Ir::Label { .. } => {}
             }
 
             ip += 1;

@@ -1,4 +1,4 @@
-use std::collections::HashMap;
+use std::{cell::RefCell, collections::HashMap, rc::Rc};
 
 use anyhow::Result;
 
@@ -7,10 +7,12 @@ use crate::{
     lexer::{InstructionToken, InstructionTokenType},
 };
 
+type NativeVaueFnBody = fn(Vec<Rc<RefCell<Value>>>) -> Result<Rc<RefCell<Value>>>;
+
 #[derive(Debug, Clone)]
 pub enum ValueFunctionBody {
     Ir(Vec<Ir>),
-    Native(fn(Vec<Value>) -> Result<Value>),
+    Native(NativeVaueFnBody),
 }
 
 impl ValueFunctionBody {
@@ -22,7 +24,7 @@ impl ValueFunctionBody {
         }
     }
 
-    pub fn as_native(&self) -> Option<fn(Vec<Value>) -> Result<Value>> {
+    pub fn as_native(&self) -> Option<NativeVaueFnBody> {
         if let ValueFunctionBody::Native(value) = self {
             Some(*value)
         } else {
@@ -33,7 +35,7 @@ impl ValueFunctionBody {
 
 #[derive(Debug, Clone)]
 pub struct ValueFunction {
-    pub args: Vec<String>,
+    pub args: usize,
     pub body: ValueFunctionBody,
 }
 
@@ -43,8 +45,8 @@ pub enum Value {
     Float(f64),
     String(String),
     Bool(bool),
-    Array(Vec<Value>),
-    Dict(HashMap<String, Value>),
+    Array(Vec<Rc<RefCell<Value>>>),
+    Dict(HashMap<String, Rc<RefCell<Value>>>),
     Void,
     Function(ValueFunction),
 }
@@ -90,7 +92,7 @@ impl Value {
         }
     }
 
-    pub fn as_array(&self) -> Option<&Vec<Value>> {
+    pub fn as_array(&self) -> Option<&Vec<Rc<RefCell<Value>>>> {
         if let Value::Array(value) = self {
             Some(value)
         } else {
@@ -98,7 +100,7 @@ impl Value {
         }
     }
 
-    pub fn as_dict(&self) -> Option<&HashMap<String, Value>> {
+    pub fn as_dict(&self) -> Option<&HashMap<String, Rc<RefCell<Value>>>> {
         if let Value::Dict(value) = self {
             Some(value)
         } else {
@@ -109,7 +111,7 @@ impl Value {
     pub fn from_lexed_array(a: &[InstructionToken]) -> Result<Value> {
         let mut array = Vec::new();
         for token in a {
-            array.push(match &token.ty {
+            array.push(Rc::new(RefCell::new(match &token.ty {
                 InstructionTokenType::Int(n) => Value::Int(*n),
                 InstructionTokenType::Float(f) => Value::Float(*f),
                 InstructionTokenType::Boolean(b) => Value::Bool(*b),
@@ -117,7 +119,7 @@ impl Value {
                 InstructionTokenType::Array(a) => Value::from_lexed_array(a)?,
                 InstructionTokenType::Void => Value::Void,
                 _ => return Err(anyhow::anyhow!("Invalid value in array")),
-            });
+            })));
         }
         Ok(Value::Array(array))
     }

@@ -8,7 +8,7 @@ pub enum IrValue {
     /// A value.
     Value(Value),
     /// A variable.
-    Var(String),
+    Var(usize),
 }
 
 #[derive(Debug, Clone)]
@@ -17,26 +17,24 @@ pub enum Ir {
     Call { name: String, args: Vec<IrValue> },
     /// Calls a function and assigns the result to a variable.
     CallAssign {
-        var: String,
+        var: usize,
         name: String,
         args: Vec<IrValue>,
     },
     /// Assigns a value to a variable.
-    Assign { var: String, value: IrValue },
-    /// Jumps to a label.
-    Jump { label: String },
-    /// Jumps to a label if a condition is true.
-    JumpIf { label: String, cond: IrValue },
+    Assign { var: usize, value: IrValue },
+    /// Jumps to a line.
+    Jump { line: usize },
+    /// Jumps to a line if a condition is true.
+    JumpIf { line: usize, cond: IrValue },
     /// Returns a value.
     Return { value: IrValue },
-    /// Defines a label.
-    Label { name: String },
 }
 
 impl IrValue {
     pub fn from_lex(token: &InstructionToken) -> Result<IrValue, anyhow::Error> {
         Ok(match &token.ty {
-            InstructionTokenType::Identifier(name) => IrValue::Var(name.clone()),
+            InstructionTokenType::Identifier(_) => unreachable!(),
             InstructionTokenType::Int(n) => IrValue::Value(Value::Int(*n)),
             InstructionTokenType::Float(f) => IrValue::Value(Value::Float(*f)),
             InstructionTokenType::Boolean(b) => IrValue::Value(Value::Bool(*b)),

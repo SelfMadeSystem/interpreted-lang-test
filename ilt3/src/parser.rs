@@ -1,3 +1,5 @@
+use std::collections::HashMap;
+
 use anyhow::Result;
 use thiserror::Error;
 
@@ -9,16 +11,18 @@ use crate::{
 
 #[derive(Debug, Clone, Error)]
 pub enum ParseError {
-    #[error("Invalid line type at line {0}. Expected function")]
-    InvalidLineTypeEF(usize),
+    #[error("Invalid line type {0:#?} at line {1}. Expected function")]
+    InvalidLineTypeEF(LineType, usize),
     #[error("Invalid IR value `{0}` at line {1}, column {2}")]
     InvalidIRValue(String, usize, usize),
+    #[error("Label `{0}` not found at line {1}")]
+    LabelNotFound(String, usize),
 }
 
 #[derive(Debug, Clone)]
 pub struct Function {
     pub name: String,
-    pub args: Vec<String>,
+    pub args: usize,
     pub body: Vec<Ir>,
 }
 
@@ -26,6 +30,7 @@ pub struct Function {
 pub struct Parser {
     lines: Vec<Line>,
     index: usize,
+    vars: Vec<String>,
 }
 
 impl Parser {
@@ -33,6 +38,23 @@ impl Parser {
         Self {
             lines: lines.to_vec(),
             index: 0,
+            vars: Vec::new(),
+        }
+    }
+
+    pub fn get_var(&mut self, name: &str) -> usize {
+        if let Some(index) = self.vars.iter().position(|var| var == name) {
+            index
+        } else {
+            self.vars.push(name.to_string());
+            self.vars.len() - 1
+        }
+    }
+
+    pub fn ir_var_from_lex(&mut self, token: &InstructionToken) -> Result<IrValue> {
+        match &token.ty {
+            InstructionTokenType::Identifier(name) => Ok(IrValue::Var(self.get_var(&name))),
+            _ => Ok(IrValue::from_lex(token)?),
         }
     }
 
@@ -42,42 +64,70 @@ impl Parser {
             let line = &self.lines[self.index];
             match line.ty.clone() {
                 LineType::Function { name, args } => {
-                    let body = self.parse_function()?;
+                    for arg in args.iter() {
+                        self.get_var(arg);
+                    }
+
+                    let labels = self.find_labels()?;
+                    let body = self.parse_function(labels)?;
                     functions.push(Function {
                         name: name.clone(),
-                        args: args.clone(),
+                        args: args.len(),
                         body,
                     });
                 }
                 LineType::Comment { .. } => {}
-                _ => return Err(ParseError::InvalidLineTypeEF(self.index).into()),
+                a => return Err(ParseError::InvalidLineTypeEF(a, line.line).into()),
             }
             self.index += 1;
+            self.vars.clear();
         }
         Ok(functions)
     }
 
-    fn parse_function(&mut self) -> Result<Vec<Ir>> {
+    fn find_labels(&self) -> Result<HashMap<String, usize>> {
+        let mut labels = HashMap::new();
+        let mut sub = self.index;
+        for (i, line) in self.lines.iter().enumerate().skip(self.index + 1) {
+            match line.ty.clone() {
+                LineType::Label { name } => {
+                    sub += 1;
+                    labels.insert(name, i - sub);
+                }
+                LineType::Function { .. } => break,
+                _ => {}
+            }
+        }
+        Ok(labels)
+    }
+
+    fn parse_function(&mut self, labels: HashMap<String, usize>) -> Result<Vec<Ir>> {
         let mut body = Vec::new();
         self.index += 1;
         while self.index < self.lines.len() {
             let line = &self.lines[self.index];
-            body.push(match line.ty.clone() {
-                LineType::Label { name } => Ir::Label { name: name.clone() },
-                LineType::Instruction { ty, tokens } => self.parse_instruction(&ty, &tokens)?,
-                LineType::Comment { .. } => continue,
-                LineType::Function { .. } => break,
-            });
             self.index += 1;
+            body.push(match line.ty.clone() {
+                LineType::Label { .. } => continue,
+                LineType::Instruction { ty, tokens } => {
+                    self.parse_instruction(&ty, &tokens, &labels)?
+                }
+                LineType::Comment { .. } => continue,
+                LineType::Function { .. } => {
+                    self.index -= 1;
+                    break;
+                }
+            });
         }
         self.index -= 1;
         Ok(body)
     }
 
     fn parse_instruction(
-        &self,
+        &mut self,
         ty: &InstructionType,
         tokens: &Vec<InstructionToken>,
+        labels: &HashMap<String, usize>,
     ) -> Result<Ir> {
         match ty {
             InstructionType::Call => {
@@ -95,7 +145,7 @@ impl Parser {
                 };
                 let args = tokens[1..]
                     .iter()
-                    .map(|token| IrValue::from_lex(token))
+                    .map(|token| self.ir_var_from_lex(token))
                     .collect::<Result<_>>()?;
                 Ok(Ir::Call { name, args })
             }
@@ -109,6 +159,7 @@ impl Parser {
                         )
                     }
                 };
+                let var = self.get_var(&var);
                 let name = tokens[1].clone();
                 let name = match name.ty {
                     InstructionTokenType::Identifier(name) => name,
@@ -123,7 +174,7 @@ impl Parser {
                 };
                 let args = tokens[2..]
                     .iter()
-                    .map(|token| IrValue::from_lex(token))
+                    .map(|token| self.ir_var_from_lex(token))
                     .collect::<Result<_>>()?;
                 Ok(Ir::CallAssign { var, name, args })
             }
@@ -137,16 +188,14 @@ impl Parser {
                         )
                     }
                 };
+                let var = self.get_var(&var);
                 let value = tokens[1].clone();
-                let value = match value.ty {
-                    InstructionTokenType::Identifier(value) => IrValue::Var(value),
-                    _ => IrValue::from_lex(&value)?,
-                };
+                let value = self.ir_var_from_lex(&value)?;
                 Ok(Ir::Assign { var, value })
             }
             InstructionType::Jump => {
                 let label = tokens[0].clone();
-                let label = match label.ty {
+                let label_name = match label.ty {
                     InstructionTokenType::Identifier(label) => label,
                     _ => {
                         return Err(ParseError::InvalidIRValue(
@@ -157,12 +206,15 @@ impl Parser {
                         .into())
                     }
                 };
-                Ok(Ir::Jump { label })
+                let line = *labels
+                    .get(&label_name)
+                    .ok_or_else(|| ParseError::LabelNotFound(label_name.to_string(), label.line))?;
+                Ok(Ir::Jump { line })
             }
             InstructionType::JumpIf => {
                 let cond = tokens[0].clone();
                 let cond = match cond.ty {
-                    InstructionTokenType::Identifier(cond) => IrValue::Var(cond),
+                    InstructionTokenType::Identifier(cond) => IrValue::Var(self.get_var(&cond)),
                     InstructionTokenType::Boolean(b) => IrValue::Value(Value::Bool(b)),
                     _ => {
                         return Err(ParseError::InvalidIRValue(
@@ -174,7 +226,7 @@ impl Parser {
                     }
                 };
                 let label = tokens[1].clone();
-                let label = match label.ty {
+                let label_name = match label.ty {
                     InstructionTokenType::Identifier(label) => label,
                     _ => {
                         return Err(ParseError::InvalidIRValue(
@@ -185,14 +237,14 @@ impl Parser {
                         .into())
                     }
                 };
-                Ok(Ir::JumpIf { cond, label })
+                let line = *labels
+                    .get(&label_name)
+                    .ok_or_else(|| ParseError::LabelNotFound(label_name.to_string(), label.line))?;
+                Ok(Ir::JumpIf { cond, line })
             }
             InstructionType::Return => {
                 let value = tokens[0].clone();
-                let value = match value.ty {
-                    InstructionTokenType::Identifier(value) => IrValue::Var(value),
-                    _ => IrValue::from_lex(&value)?,
-                };
+                let value = self.ir_var_from_lex(&value)?;
                 Ok(Ir::Return { value })
             }
         }

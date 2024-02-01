@@ -460,7 +460,7 @@ impl Lexer {
         Ok(InstructionTokenType::Array(tokens))
     }
 
-    fn parse_line(&mut self) -> Result<Line> {
+    fn parse_line(&mut self) -> Result<Option<Line>> {
         self.skip_whitespace();
 
         let spaces = self.count_spaces();
@@ -468,11 +468,13 @@ impl Lexer {
         if let Some(c) = self.peek() {
             if *c == '#' {
                 self.next();
-                return Ok(Line {
+                return Ok(Some(Line {
                     ty: self.parse_comment()?,
                     line: self.line,
-                });
+                }));
             }
+        } else {
+            return Ok(None);
         }
 
         let ty = match spaces {
@@ -482,18 +484,19 @@ impl Lexer {
             _ => return Err(self.new_unexpected_char(' ')),
         };
 
-        Ok(Line {
+        Ok(Some(Line {
             ty,
             line: self.line,
-        })
+        }))
     }
 
     pub fn parse(&mut self) -> Result<Vec<Line>> {
         let mut lines = Vec::new();
 
         while let Some(_) = self.peek() {
-            let line = self.parse_line()?;
-            lines.push(line);
+            if let Some(line) = self.parse_line()? {
+                lines.push(line);
+            }
         }
 
         Ok(lines)
